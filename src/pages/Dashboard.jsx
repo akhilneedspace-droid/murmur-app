@@ -13,6 +13,48 @@ function getGreeting() {
   return 'Still up?'
 }
 
+// Star milestone titles
+function getStarTitle(count) {
+  if (count >= 10) return 'Legend'
+  if (count >= 4) return 'Rockstar'
+  if (count >= 1) return 'Star'
+  return null
+}
+
+function getFilledStars(count) {
+  if (count >= 10) return 3
+  if (count >= 4) return 2
+  if (count >= 1) return 1
+  return 0
+}
+
+// Compact star display shown under the greeting
+function ListenerStars({ count }) {
+  if (count < 1) return null
+  const filled = getFilledStars(count)
+  const title = getStarTitle(count)
+  const nextMilestone = count < 1 ? 1 : count < 4 ? 4 : count < 10 ? 10 : null
+  const tooltipText = nextMilestone
+    ? `${title} · ${nextMilestone - count} more to next level`
+    : `${title} · Max level reached!`
+
+  return (
+    <div
+      title={tooltipText}
+      style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, cursor: 'default' }}
+    >
+      {[0, 1, 2].map(i => (
+        <span key={i} style={{ fontSize: 14, opacity: i < filled ? 1 : 0.25, filter: i < filled ? 'none' : 'grayscale(1)' }}>
+          ⭐
+        </span>
+      ))}
+      <span style={{ fontSize: 12, color: 'var(--teal)', fontWeight: 500, marginLeft: 4 }}>
+        {title}
+      </span>
+    </div>
+  )
+}
+
 const SEED_POSTS = [
   { id: 'seed-1', content: "I've been really hard on myself lately. Like nothing I do is ever enough, no matter how hard I try.", emotion_tag: 'overwhelmed', is_anonymous: false, created_at: new Date(Date.now() - 4 * 60000).toISOString(), profiles: { full_name: 'Priya', avatar_url: null }, is_seed: true },
   { id: 'seed-2', content: "Had a panic attack at work today and had to pretend everything was fine. I'm exhausted from holding it together.", emotion_tag: 'anxious', is_anonymous: true, created_at: new Date(Date.now() - 9 * 60000).toISOString(), profiles: null, is_seed: true },
@@ -32,7 +74,6 @@ const EMOJI_GROUPS = [
   ['🙏','💪','🤝','👋','✨','🌱','🌊','🌙','☀️','🕊️'],
 ]
 
-// ── Portal Modal ───────────────────────────────────────────────
 function Modal({ title, body, primaryLabel, primaryAction, secondaryLabel, secondaryAction, danger }) {
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 24px' }}>
@@ -47,7 +88,6 @@ function Modal({ title, body, primaryLabel, primaryAction, secondaryLabel, secon
   )
 }
 
-// ── Avatar ─────────────────────────────────────────────────────
 function Avatar({ url, name, size = 36, style: extra = {} }) {
   const initial = (name || '?')[0].toUpperCase()
   return (
@@ -57,7 +97,6 @@ function Avatar({ url, name, size = 36, style: extra = {} }) {
   )
 }
 
-// ── Rating Screen ──────────────────────────────────────────────
 function RatingScreen({ onSubmit, onSkip }) {
   const [selected, setSelected] = useState(null)
   const OPTIONS = [
@@ -87,7 +126,6 @@ function RatingScreen({ onSubmit, onSkip }) {
   )
 }
 
-// ── Main Dashboard ─────────────────────────────────────────────
 export default function Dashboard() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -165,20 +203,10 @@ export default function Dashboard() {
   if (activeExpresserSession && view !== 'listener') {
     return <ChatView sessionId={activeExpresserSession.id} isExpresser={true} isAISession={activeExpresserSession.is_ai} currentUserId={user.id} myProfile={profile} onBack={() => { setActiveExpresserSession(null); setView('home') }} onEnd={() => { setActiveExpresserSession(null); setView('home'); fetchPastChats() }} />
   }
-
   if (view === 'expresser') return <ExpresserView user={user} myProfile={profile} onBack={() => setView('home')} onSessionStart={s => setActiveExpresserSession(s)} />
-
-  if (view === 'listener') {
-    return <ListenerView user={user} myProfile={profile}
-      onBack={(session) => { if (session?.id) { setPendingListenerSession(session); setShowResumeModal(true) } setView('home') }}
-      onComplete={fetchPastChats} />
-  }
-
-  if (view === 'chats') return <PastChatsView chats={pastChats} userId={user?.id} onOpen={chat => { setSelectedChat(chat); setView('chat-detail') }} onDelete={deleteChat} onBack={() => { fetchPastChats(); setView('home') }} />
-
-  if (view === 'chat-detail' && selectedChat) {
-    return <ChatView sessionId={selectedChat.id} isExpresser={selectedChat.expresser_id === user?.id} currentUserId={user.id} myProfile={profile} post={selectedChat.posts} preloadedOtherProfile={selectedChat.otherProfile} onBack={() => { setSelectedChat(null); setView('chats') }} onEnd={() => { setSelectedChat(null); setView('chats'); fetchPastChats() }} />
-  }
+  if (view === 'listener') return <ListenerView user={user} myProfile={profile} onBack={(s) => { if (s?.id) { setPendingListenerSession(s); setShowResumeModal(true) } setView('home') }} onComplete={fetchPastChats} />
+  if (view === 'chats') return <PastChatsView chats={pastChats} userId={user?.id} onOpen={c => { setSelectedChat(c); setView('chat-detail') }} onDelete={deleteChat} onBack={() => { fetchPastChats(); setView('home') }} />
+  if (view === 'chat-detail' && selectedChat) return <ChatView sessionId={selectedChat.id} isExpresser={selectedChat.expresser_id === user?.id} currentUserId={user.id} myProfile={profile} post={selectedChat.posts} preloadedOtherProfile={selectedChat.otherProfile} onBack={() => { setSelectedChat(null); setView('chats') }} onEnd={() => { setSelectedChat(null); setView('chats'); fetchPastChats() }} />
 
   const firstName = profile?.full_name?.split(' ')[0] ?? ''
 
@@ -191,31 +219,29 @@ export default function Dashboard() {
         <Modal title="You have an ongoing conversation" body="It looks like you stepped away from a chat. Would you like to continue where you left off?" primaryLabel="Continue conversation" primaryAction={() => { setShowResumeModal(false); setSelectedChat(pendingListenerSession); setView('chat-detail') }} secondaryLabel="Leave it for now" secondaryAction={() => { setShowResumeModal(false); setPendingListenerSession(null) }} />
       )}
 
-      <div style={{ position: 'relative', zIndex: 1, paddingTop: 52, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28, opacity: visible ? 1 : 0, transition: 'opacity 0.5s ease' }}>
+      {/* Header with stars */}
+      <div style={{ position: 'relative', zIndex: 1, paddingTop: 52, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28, opacity: visible ? 1 : 0, transition: 'opacity 0.5s ease' }}>
         <div>
           <p style={{ fontSize: 13, color: 'var(--text-tertiary)', marginBottom: 2 }}>{getGreeting()}</p>
           <h2 style={{ fontSize: 22, fontWeight: 500 }}>Hey, {firstName} 👋</h2>
+          {/* Stars shown under name — compact and meaningful */}
+          <ListenerStars count={listenerCount} />
         </div>
-        <button onClick={() => navigate('/account')} style={{ background: 'none', cursor: 'pointer', border: 'none' }}>
+        <button onClick={() => navigate('/account')} style={{ background: 'none', cursor: 'pointer', border: 'none', marginTop: 4 }}>
           <Avatar url={profile?.avatar_url} name={profile?.full_name || '?'} size={40} />
         </button>
       </div>
 
-      {listenerCount > 0 && (
-        <div style={{ position: 'relative', zIndex: 1, marginBottom: 16, padding: '16px 20px', background: 'linear-gradient(135deg, rgba(93,202,165,0.08), rgba(139,124,246,0.08))', border: '1px solid rgba(93,202,165,0.2)', borderRadius: 'var(--radius)', opacity: visible ? 1 : 0, transition: 'opacity 0.5s ease 0.1s' }}>
-          <p style={{ fontSize: 12, color: 'var(--teal)', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>You're a rockstar ✨</p>
-          <p style={{ fontSize: 15, color: 'var(--text)', fontWeight: 500 }}>You've shown up for {listenerCount} {listenerCount === 1 ? 'person' : 'people'} when they needed it most.</p>
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>That matters more than you know.</p>
-        </div>
-      )}
-
-      <div style={{ position: 'relative, zIndex: 1', display: 'flex', flexDirection: 'column', gap: 12, opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(16px)', transition: 'opacity 0.6s ease 0.15s, transform 0.6s ease 0.15s' }}>
+      {/* Role cards */}
+      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: 12, opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(16px)', transition: 'opacity 0.6s ease 0.15s, transform 0.6s ease 0.15s' }}>
         <div style={{ marginBottom: 4 }}>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(24px, 6vw, 30px)', fontWeight: 400, letterSpacing: '-0.02em', lineHeight: 1.2, marginBottom: 6 }}>How do you want to show up today?</h1>
           <p style={{ fontSize: 14, color: 'var(--text-tertiary)' }}>You can switch roles at any time.</p>
         </div>
+
         <RoleCard role="Expresser" title="Yes, I want to share my feelings" description="Write what's on your mind. Someone will listen — human or AI. You are seen." color="var(--accent)" hoverBorder="rgba(139,124,246,0.4)" hoverBg="var(--accent-glow)" onClick={() => setView('expresser')} />
         <RoleCard role="Listener" title="I want to be there for someone" description="Browse what people are sharing. Pick one and simply be present." color="var(--teal)" hoverBorder="rgba(93,202,165,0.4)" hoverBg="rgba(93,202,165,0.05)" onClick={() => setView('listener')} />
+
         <button onClick={() => { fetchPastChats(); setView('chats') }} style={{ width: '100%', textAlign: 'left', padding: '16px 20px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'border-color var(--transition)' }}
           onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'}
           onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
@@ -248,7 +274,6 @@ function RoleCard({ role, title, description, color, hoverBorder, hoverBg, onCli
   )
 }
 
-// ── Expresser View ─────────────────────────────────────────────
 function ExpresserView({ user, myProfile, onBack, onSessionStart }) {
   const [text, setText] = useState('')
   const [anonymous, setAnonymous] = useState(false)
@@ -269,39 +294,21 @@ function ExpresserView({ user, myProfile, onBack, onSessionStart }) {
   const AI_WAIT_SECS    = 10
 
   useEffect(() => { setTimeout(() => setVisible(true), 80) }, [])
-
-  useEffect(() => {
-    if (phase !== 'acknowledge') return
-    const t = setTimeout(() => setPhase('wait'), ACK_DURATION_MS)
-    return () => clearTimeout(t)
-  }, [phase])
-
+  useEffect(() => { if (phase !== 'acknowledge') return; const t = setTimeout(() => setPhase('wait'), ACK_DURATION_MS); return () => clearTimeout(t) }, [phase])
   useEffect(() => {
     if (phase !== 'wait') return
-    const iv = setInterval(() => {
-      setWaitSeconds(s => {
-        const next = s + 1
-        if (next >= AI_WAIT_SECS && !aiJoining) { clearInterval(iv); triggerAI() }
-        return next
-      })
-    }, 1000)
+    const iv = setInterval(() => { setWaitSeconds(s => { const n = s + 1; if (n >= AI_WAIT_SECS && !aiJoining) { clearInterval(iv); triggerAI() } return n }) }, 1000)
     return () => clearInterval(iv)
   }, [phase, aiJoining])
-
   useEffect(() => {
     if (!postId) return
-    const ch = supabase.channel(`post-${postId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sessions', filter: `post_id=eq.${postId}` },
-        (payload) => onSessionStart(payload.new))
-      .subscribe()
+    const ch = supabase.channel(`post-${postId}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sessions', filter: `post_id=eq.${postId}` }, (p) => onSessionStart(p.new)).subscribe()
     return () => supabase.removeChannel(ch)
   }, [postId])
 
   async function triggerAI() {
     setAiJoining(true)
-    const { data } = await supabase.from('sessions')
-      .insert({ post_id: postId, expresser_id: user.id, listener_id: null, status: 'active', is_ai: true })
-      .select().single()
+    const { data } = await supabase.from('sessions').insert({ post_id: postId, expresser_id: user.id, listener_id: null, status: 'active', is_ai: true }).select().single()
     if (data) onSessionStart({ ...data, is_ai: true })
   }
 
@@ -309,15 +316,10 @@ function ExpresserView({ user, myProfile, onBack, onSessionStart }) {
     if (text.trim().length < 5) return
     setLoading(true)
     try {
-      const { data, error: e } = await supabase.from('posts')
-        .insert({ user_id: user.id, content: text.trim(), emotion_tag: tag, is_anonymous: anonymous, status: 'open' })
-        .select().single()
+      const { data, error: e } = await supabase.from('posts').insert({ user_id: user.id, content: text.trim(), emotion_tag: tag, is_anonymous: anonymous, status: 'open' }).select().single()
       if (e) throw e
-      setPostId(data.id)
-      setPostContent(text.trim())
-      setPhase('acknowledge')
-    } catch (err) { setError(err.message) }
-    finally { setLoading(false) }
+      setPostId(data.id); setPostContent(text.trim()); setPhase('acknowledge')
+    } catch (err) { setError(err.message) } finally { setLoading(false) }
   }
 
   const TAGS = ['anxious', 'overwhelmed', 'sad', 'angry', 'confused', 'numb', 'grateful', 'venting']
@@ -328,9 +330,7 @@ function ExpresserView({ user, myProfile, onBack, onSessionStart }) {
         <div style={{ animation: 'fadeUp 0.6s ease both' }}>
           <div style={{ fontSize: 52, marginBottom: 16, animation: 'float 3s ease-in-out infinite' }}>🤍</div>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(26px, 7vw, 34px)', fontWeight: 400, color: 'var(--accent)', letterSpacing: '-0.02em', marginBottom: 14 }}>Thank you for sharing.</h2>
-          <p style={{ fontSize: 15, color: 'var(--text-secondary)', lineHeight: 1.8, maxWidth: 300 }}>
-            We know it wasn't easy to put your heart into words. What you just did takes real courage — and it matters deeply.
-          </p>
+          <p style={{ fontSize: 15, color: 'var(--text-secondary)', lineHeight: 1.8, maxWidth: 300 }}>We know it wasn't easy to put your heart into words. What you just did takes real courage — and it matters deeply.</p>
         </div>
         <div style={{ width: '100%', maxWidth: 340, padding: '16px 20px', background: 'var(--bg2)', border: '1px solid rgba(139,124,246,0.2)', borderRadius: 'var(--radius)', textAlign: 'left', animation: 'fadeUp 0.6s ease 0.2s both' }}>
           <p style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>Your words</p>
@@ -350,46 +350,28 @@ function ExpresserView({ user, myProfile, onBack, onSessionStart }) {
             <p style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>You shared</p>
             <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.7, fontStyle: 'italic' }}>"{postContent.slice(0, 140)}{postContent.length > 140 ? '...' : ''}"</p>
           </div>
-
           <div style={{ padding: '18px 20px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: aiJoining ? 'var(--accent)' : 'var(--teal)', animation: 'pulse 1.5s ease-in-out infinite', flexShrink: 0 }} />
-              <p style={{ fontSize: 14, color: 'var(--text)', fontWeight: 500 }}>
-                {aiJoining ? 'Connecting you now...' : 'Looking for a listener who cares...'}
-              </p>
+              <p style={{ fontSize: 14, color: 'var(--text)', fontWeight: 500 }}>{aiJoining ? 'Connecting you now...' : 'Looking for a listener who cares...'}</p>
             </div>
             {!aiJoining && (
               <>
                 <div style={{ height: 3, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
                   <div style={{ height: '100%', width: `${pct}%`, background: 'var(--accent)', borderRadius: 2, transition: 'width 1s linear' }} />
                 </div>
-                <p style={{ fontSize: 13, color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
-                  If no one is free right now, a warm listener will step in for you.
-                </p>
+                <p style={{ fontSize: 13, color: 'var(--text-tertiary)', lineHeight: 1.6 }}>If no one is free right now, a warm listener will step in for you.</p>
               </>
             )}
           </div>
-
-          {/* Journal prompt — private note, not sent anywhere */}
           <div style={{ padding: '16px 20px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
-            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: showJournal ? 10 : 0, lineHeight: 1.6 }}>
-              💭 Sometimes writing more helps. Anything else on your mind?
-            </p>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: showJournal ? 10 : 0, lineHeight: 1.6 }}>💭 Sometimes writing more helps. Anything else on your mind?</p>
             {showJournal ? (
-              <textarea
-                value={journalText}
-                onChange={e => setJournalText(e.target.value)}
-                placeholder="Keep going... this is just for you, not sent to anyone."
-                rows={3}
-                autoFocus
+              <textarea value={journalText} onChange={e => setJournalText(e.target.value)} placeholder="Keep going... this is just for you, not sent to anyone." rows={3} autoFocus
                 style={{ width: '100%', padding: '12px', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 14, lineHeight: 1.7, color: 'var(--text)', resize: 'none', marginTop: 4 }}
-                onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-                onBlur={e => e.target.style.borderColor = 'var(--border)'}
-              />
+                onFocus={e => e.target.style.borderColor = 'var(--accent)'} onBlur={e => e.target.style.borderColor = 'var(--border)'} />
             ) : (
-              <button onClick={() => setShowJournal(true)} style={{ fontSize: 13, color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer', background: 'none', border: 'none', marginTop: 6 }}>
-                Write a little more
-              </button>
+              <button onClick={() => setShowJournal(true)} style={{ fontSize: 13, color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer', background: 'none', border: 'none', marginTop: 6 }}>Write a little more</button>
             )}
           </div>
         </div>
@@ -415,8 +397,7 @@ function ExpresserView({ user, myProfile, onBack, onSessionStart }) {
           </div>
           <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Start wherever feels right..." rows={6}
             style={{ width: '100%', padding: '16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', fontSize: 15, lineHeight: 1.7, color: 'var(--text)', resize: 'none', transition: 'border-color var(--transition)' }}
-            onFocus={e => e.target.style.borderColor = 'rgba(139,124,246,0.4)'}
-            onBlur={e => e.target.style.borderColor = 'var(--border)'} />
+            onFocus={e => e.target.style.borderColor = 'rgba(139,124,246,0.4)'} onBlur={e => e.target.style.borderColor = 'var(--border)'} />
           <div>
             <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 10, letterSpacing: '0.04em' }}>HOW ARE YOU FEELING? (optional)</p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -437,16 +418,13 @@ function ExpresserView({ user, myProfile, onBack, onSessionStart }) {
           {error && <p style={{ fontSize: 14, color: 'var(--coral)', textAlign: 'center' }}>{error}</p>}
         </div>
         <div style={{ position: 'relative', zIndex: 1, paddingBottom: 48 }}>
-          <button className="btn-primary" disabled={text.trim().length < 5 || loading} onClick={handleSubmit}>
-            {loading ? 'Sharing...' : 'Yes, I want to share my feelings'}
-          </button>
+          <button className="btn-primary" disabled={text.trim().length < 5 || loading} onClick={handleSubmit}>{loading ? 'Sharing...' : 'Yes, I want to share my feelings'}</button>
         </div>
       </div>
     </>
   )
 }
 
-// ── Listener View ──────────────────────────────────────────────
 function ListenerView({ user, myProfile, onBack, onComplete }) {
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -455,51 +433,29 @@ function ListenerView({ user, myProfile, onBack, onComplete }) {
   const [showEndTip, setShowEndTip] = useState(false)
 
   useEffect(() => { setTimeout(() => setVisible(true), 80) }, [])
-
   useEffect(() => {
     fetchPosts()
-    const ch = supabase.channel('open-posts')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, fetchPosts)
-      .subscribe()
+    const ch = supabase.channel('open-posts').on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, fetchPosts).subscribe()
     return () => supabase.removeChannel(ch)
   }, [])
 
   async function fetchPosts() {
     const { data } = await supabase.from('posts').select('*, profiles(full_name, avatar_url)').eq('status', 'open').neq('user_id', user.id).order('created_at', { ascending: false })
-    setPosts([...(data || []), ...SEED_POSTS])
-    setLoading(false)
+    setPosts([...(data || []), ...SEED_POSTS]); setLoading(false)
   }
 
   async function handleSelectPost(post) {
     if (post.is_seed) {
-      if (!seedChatStore[post.id]) {
-        seedChatStore[post.id] = [{ id: `seed-init-${post.id}`, sender_id: 'other', content: post.content, created_at: new Date().toISOString() }]
-      }
-      setActiveSession({ id: `seed-${post.id}`, is_seed: true, post })
-      setShowEndTip(true)
-      return
+      if (!seedChatStore[post.id]) seedChatStore[post.id] = [{ id: `seed-init-${post.id}`, sender_id: 'other', content: post.content, created_at: new Date().toISOString() }]
+      setActiveSession({ id: `seed-${post.id}`, is_seed: true, post }); setShowEndTip(true); return
     }
-
-    // Fetch expresser profile explicitly — this fixes the "Someone" bug
-    const { data: expresserProfile } = await supabase
-      .from('profiles').select('full_name, avatar_url').eq('id', post.user_id).single()
-
+    const { data: expresserProfile } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', post.user_id).single()
     const enrichedPost = { ...post, profiles: expresserProfile ?? post.profiles }
-
-    const { data: session } = await supabase.from('sessions')
-      .insert({ post_id: post.id, expresser_id: post.user_id, listener_id: user.id, status: 'active' })
-      .select().single()
-
-    if (session) {
-      await supabase.from('posts').update({ status: 'active' }).eq('id', post.id)
-      setActiveSession({ ...session, post: enrichedPost })
-      setShowEndTip(true)
-    }
+    const { data: session } = await supabase.from('sessions').insert({ post_id: post.id, expresser_id: post.user_id, listener_id: user.id, status: 'active' }).select().single()
+    if (session) { await supabase.from('posts').update({ status: 'active' }).eq('id', post.id); setActiveSession({ ...session, post: enrichedPost }); setShowEndTip(true) }
   }
 
-  if (activeSession) {
-    return <ChatView sessionId={activeSession.id} isExpresser={false} isSeedSession={activeSession.is_seed} post={activeSession.post} myProfile={myProfile} currentUserId={user.id} showEndTip={showEndTip} onEndTipDismiss={() => setShowEndTip(false)} onBack={() => onBack(activeSession)} onEnd={() => { setActiveSession(null); onComplete?.(); fetchPosts() }} />
-  }
+  if (activeSession) return <ChatView sessionId={activeSession.id} isExpresser={false} isSeedSession={activeSession.is_seed} post={activeSession.post} myProfile={myProfile} currentUserId={user.id} showEndTip={showEndTip} onEndTipDismiss={() => setShowEndTip(false)} onBack={() => onBack(activeSession)} onEnd={() => { setActiveSession(null); onComplete?.(); fetchPosts() }} />
 
   return (
     <div className="page" style={{ padding: '0 24px', justifyContent: 'flex-start' }}>
@@ -513,10 +469,8 @@ function ListenerView({ user, myProfile, onBack, onComplete }) {
         <p style={{ fontSize: 14, color: 'var(--text-tertiary)' }}>Choose one person to be present with.</p>
       </div>
       <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 48, opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(12px)', transition: 'opacity 0.4s ease, transform 0.4s ease' }}>
-        {loading
-          ? <div style={{ textAlign: 'center', padding: 40 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--teal)', display: 'inline-block', animation: 'pulse 1.2s infinite' }} /></div>
-          : posts.map((post, idx) => <PostCard key={post.id} post={post} delay={idx * 0.06} onClick={() => handleSelectPost(post)} />)
-        }
+        {loading ? <div style={{ textAlign: 'center', padding: 40 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--teal)', display: 'inline-block', animation: 'pulse 1.2s infinite' }} /></div>
+          : posts.map((post, idx) => <PostCard key={post.id} post={post} delay={idx * 0.06} onClick={() => handleSelectPost(post)} />)}
       </div>
     </div>
   )
@@ -549,7 +503,6 @@ function PostCard({ post, delay, onClick }) {
 function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
   const [confirmDelete, setConfirmDelete] = useState(null)
   const timeAgo = d => { const m = Math.floor((Date.now() - new Date(d)) / 60000); if (m < 1) return 'just now'; if (m < 60) return `${m}m ago`; if (m < 1440) return `${Math.floor(m / 60)}h ago`; return `${Math.floor(m / 1440)}d ago` }
-
   return (
     <div className="page" style={{ padding: '0 24px', justifyContent: 'flex-start' }}>
       <div style={{ position: 'relative', zIndex: 1, paddingTop: 52, marginBottom: 24 }}>
@@ -560,7 +513,6 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 400, letterSpacing: '-0.01em', marginBottom: 6 }}>Your conversations</h2>
         <p style={{ fontSize: 14, color: 'var(--text-tertiary)' }}>Every conversation here meant something.</p>
       </div>
-
       {chats.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--text-tertiary)' }}>
           <p style={{ fontSize: 32, marginBottom: 16 }}>◎</p>
@@ -577,16 +529,13 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
             const isAnon = chat.posts?.is_anonymous
             const otherName = isAnon ? 'Anonymous' : (chat.otherProfile?.full_name?.split(' ')[0] ?? 'Someone')
             const otherAvatar = isAnon ? null : chat.otherProfile?.avatar_url
-
             return (
               <div key={chat.id} style={{ padding: 16, background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                 <button onClick={() => onOpen(chat)} style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: isExp ? 'var(--accent)' : 'var(--teal)' }}>{isExp ? 'You expressed' : 'You listened'}</span>
-                      <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 600, background: isOngoing ? 'rgba(93,202,165,0.15)' : 'rgba(136,135,128,0.15)', color: isOngoing ? 'var(--teal)' : 'var(--text-tertiary)', border: `1px solid ${isOngoing ? 'rgba(93,202,165,0.3)' : 'var(--border)'}`, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                        {isOngoing ? 'Ongoing' : 'Ended'}
-                      </span>
+                      <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 600, background: isOngoing ? 'rgba(93,202,165,0.15)' : 'rgba(136,135,128,0.15)', color: isOngoing ? 'var(--teal)' : 'var(--text-tertiary)', border: `1px solid ${isOngoing ? 'rgba(93,202,165,0.3)' : 'var(--border)'}`, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{isOngoing ? 'Ongoing' : 'Ended'}</span>
                     </div>
                     <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{timeAgo(chat.created_at)}</span>
                   </div>
@@ -603,10 +552,7 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
           })}
         </div>
       )}
-
-      {confirmDelete && (
-        <Modal title="Delete this conversation?" body="This can't be undone. The messages will be gone permanently." primaryLabel="Yes, delete it" primaryAction={() => { onDelete(confirmDelete); setConfirmDelete(null) }} secondaryLabel="Keep it" secondaryAction={() => setConfirmDelete(null)} danger />
-      )}
+      {confirmDelete && <Modal title="Delete this conversation?" body="This can't be undone. The messages will be gone permanently." primaryLabel="Yes, delete it" primaryAction={() => { onDelete(confirmDelete); setConfirmDelete(null) }} secondaryLabel="Keep it" secondaryAction={() => setConfirmDelete(null)} danger />}
     </div>
   )
 }
@@ -618,10 +564,7 @@ function EmojiPicker({ onSelect, onClose }) {
         <div key={gi} style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: gi < EMOJI_GROUPS.length - 1 ? 8 : 0 }}>
           {group.map(emoji => (
             <button key={emoji} onClick={() => { onSelect(emoji); onClose() }} style={{ fontSize: 20, padding: 4, borderRadius: 6, background: 'transparent', cursor: 'pointer', border: 'none' }}
-              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-              {emoji}
-            </button>
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>{emoji}</button>
           ))}
         </div>
       ))}
@@ -629,7 +572,6 @@ function EmojiPicker({ onSelect, onClose }) {
   )
 }
 
-// ── Chat View ──────────────────────────────────────────────────
 function ChatView({ sessionId, isExpresser, isSeedSession, isAISession, post, myProfile, currentUserId, preloadedOtherProfile, showEndTip, onEndTipDismiss, onBack, onEnd }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -645,60 +587,32 @@ function ChatView({ sessionId, isExpresser, isSeedSession, isAISession, post, my
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
   const typingChannel = useRef(null)
-
   const isAIChat = isSeedSession || isAISession
 
-  // Load the other person's profile correctly for both roles
   useEffect(() => {
     if (preloadedOtherProfile) { setOtherProfile(preloadedOtherProfile); return }
     if (isAIChat) return
-
-    async function loadOtherProfile() {
+    async function load() {
       if (!isExpresser && post?.user_id) {
-        // Listener sees expresser's profile — fetch by expresser's user_id from post
         const { data } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', post.user_id).single()
         if (data) setOtherProfile(data)
       } else if (isExpresser) {
-        // Expresser sees listener's profile — get listener_id from session first
-        const { data: session } = await supabase.from('sessions').select('listener_id').eq('id', sessionId).single()
-        if (session?.listener_id) {
-          const { data } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', session.listener_id).single()
-          if (data) setOtherProfile(data)
-        }
+        const { data: s } = await supabase.from('sessions').select('listener_id').eq('id', sessionId).single()
+        if (s?.listener_id) { const { data } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', s.listener_id).single(); if (data) setOtherProfile(data) }
       }
     }
-    loadOtherProfile()
+    load()
   }, [post, isExpresser, isAIChat, sessionId, preloadedOtherProfile])
 
-  // Load messages
   useEffect(() => {
-    if (isSeedSession) {
-      const pid = sessionId.replace('seed-', '')
-      const msgs = seedChatStore[pid] || []
-      setMessages(msgs)
-      setHasInteracted(msgs.some(m => m.sender_id === currentUserId))
-      setLoading(false)
-      return
-    }
-    supabase.from('messages').select('*').eq('session_id', sessionId).order('created_at', { ascending: true })
-      .then(({ data }) => {
-        const msgs = data || []
-        setMessages(msgs)
-        setHasInteracted(msgs.some(m => m.sender_id === currentUserId))
-        setLoading(false)
-      })
+    if (isSeedSession) { const pid = sessionId.replace('seed-', ''); const msgs = seedChatStore[pid] || []; setMessages(msgs); setHasInteracted(msgs.some(m => m.sender_id === currentUserId)); setLoading(false); return }
+    supabase.from('messages').select('*').eq('session_id', sessionId).order('created_at', { ascending: true }).then(({ data }) => { const msgs = data || []; setMessages(msgs); setHasInteracted(msgs.some(m => m.sender_id === currentUserId)); setLoading(false) })
   }, [sessionId])
 
-  // Real-time
   useEffect(() => {
     if (isAIChat) return
-    const ch = supabase.channel(`chat-${sessionId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `session_id=eq.${sessionId}` },
-        (payload) => { if (payload.new.sender_id !== currentUserId) { setMessages(m => [...m, payload.new]); setOtherTyping(false) } })
-      .subscribe()
-    typingChannel.current = supabase.channel(`typing-${sessionId}`)
-      .on('broadcast', { event: 'typing' }, ({ payload }) => { if (payload.user_id !== currentUserId) { setOtherTyping(true); setTimeout(() => setOtherTyping(false), 2000) } })
-      .subscribe()
+    const ch = supabase.channel(`chat-${sessionId}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `session_id=eq.${sessionId}` }, (p) => { if (p.new.sender_id !== currentUserId) { setMessages(m => [...m, p.new]); setOtherTyping(false) } }).subscribe()
+    typingChannel.current = supabase.channel(`typing-${sessionId}`).on('broadcast', { event: 'typing' }, ({ payload }) => { if (payload.user_id !== currentUserId) { setOtherTyping(true); setTimeout(() => setOtherTyping(false), 2000) } }).subscribe()
     return () => { supabase.removeChannel(ch); if (typingChannel.current) supabase.removeChannel(typingChannel.current) }
   }, [sessionId])
 
@@ -708,27 +622,16 @@ function ChatView({ sessionId, isExpresser, isSeedSession, isAISession, post, my
 
   async function send() {
     if (!input.trim() || aiThinking) return
-    const content = input.trim()
-    setInput('')
-    setHasInteracted(true)
+    const content = input.trim(); setInput(''); setHasInteracted(true)
     const myMsg = { id: `temp-${Date.now()}`, sender_id: currentUserId, content, created_at: new Date().toISOString() }
-    const updated = [...messages, myMsg]
-    setMessages(updated)
-
+    const updated = [...messages, myMsg]; setMessages(updated)
     if (isAIChat) {
-      const pid = sessionId.replace('seed-', '')
-      seedChatStore[pid] = updated
-      setAiThinking(true)
+      const pid = sessionId.replace('seed-', ''); seedChatStore[pid] = updated; setAiThinking(true)
       const history = updated.map(m => ({ role: m.sender_id === currentUserId ? 'user' : 'assistant', content: m.content }))
-      const aiText = await getAIResponse(history, 'expresser', post?.content ?? '')
-      setAiThinking(false)
+      const aiText = await getAIResponse(history, 'expresser', post?.content ?? ''); setAiThinking(false)
       const aiMsg = { id: `ai-${Date.now()}`, sender_id: 'other', content: aiText, created_at: new Date().toISOString() }
-      const withAI = [...updated, aiMsg]
-      setMessages(withAI)
-      seedChatStore[pid] = withAI
-      return
+      const withAI = [...updated, aiMsg]; setMessages(withAI); seedChatStore[pid] = withAI; return
     }
-
     const { error } = await supabase.from('messages').insert({ session_id: sessionId, sender_id: currentUserId, content })
     if (error) setMessages(m => m.filter(msg => msg.id !== myMsg.id))
     inputRef.current?.focus()
@@ -736,34 +639,25 @@ function ChatView({ sessionId, isExpresser, isSeedSession, isAISession, post, my
 
   async function handleEndChat() {
     if (!isAIChat) await supabase.from('sessions').update({ status: 'closed' }).eq('id', sessionId)
-    if (isExpresser) { setShowRating(true) }
-    else if (hasInteracted) { setEnded(true) }
-    else { onEnd?.() }
+    if (isExpresser) { setShowRating(true) } else if (hasInteracted) { setEnded(true) } else { onEnd?.() }
   }
 
   function insertEmoji(e) { setInput(i => i + e); inputRef.current?.focus() }
 
-  // Resolve names — the key fix for "Someone"
   const otherName = (() => {
     if (isSeedSession) return post?.is_anonymous ? 'Anonymous' : (post?.profiles?.full_name?.split(' ')[0] ?? 'Someone')
     if (post?.is_anonymous) return 'Anonymous'
-    // Use explicitly fetched otherProfile — not the join from the post object
     return otherProfile?.full_name?.split(' ')[0] ?? (isExpresser ? 'Listener' : 'Someone')
   })()
-
   const otherAvatar = (() => {
     if (isSeedSession) return post?.is_anonymous ? null : (post?.profiles?.avatar_url ?? null)
     if (post?.is_anonymous) return null
     return otherProfile?.avatar_url ?? null
   })()
-
   const myName = myProfile?.full_name?.split(' ')[0] ?? 'You'
   const myAvatar = myProfile?.avatar_url ?? null
 
-  if (showRating) {
-    return <RatingScreen onSubmit={async (rating) => { if (!isAIChat) await supabase.from('sessions').update({ rating }).eq('id', sessionId); onEnd?.() }} onSkip={() => onEnd?.()} />
-  }
-
+  if (showRating) return <RatingScreen onSubmit={async (r) => { if (!isAIChat) await supabase.from('sessions').update({ rating: r }).eq('id', sessionId); onEnd?.() }} onSkip={() => onEnd?.()} />
   if (ended) {
     return (
       <div className="page" style={{ padding: '0 28px', justifyContent: 'center', alignItems: 'center', gap: 24, textAlign: 'center' }}>
@@ -778,17 +672,7 @@ function ChatView({ sessionId, isExpresser, isSeedSession, isAISession, post, my
   return (
     <>
       {showEndTip && !isExpresser && <Modal title="You've started listening 💙" body="When your conversation feels complete, tap 'End' in the top right to close it with care." primaryLabel="Got it" primaryAction={onEndTipDismiss} />}
-      {showEndConfirm && (
-        <Modal
-          title={isExpresser ? 'Ready to close this conversation?' : 'End this listening session?'}
-          body={isExpresser ? 'You can always come back and express yourself again whenever you need to.' : hasInteracted ? "You've given your time and presence — that's a beautiful thing." : "It looks like you haven't responded yet. Are you sure you want to leave?"}
-          primaryLabel={isExpresser ? 'Yes, close it' : hasInteracted ? 'End session' : 'Leave without chatting'}
-          primaryAction={() => { setShowEndConfirm(false); handleEndChat() }}
-          secondaryLabel="Keep talking"
-          secondaryAction={() => setShowEndConfirm(false)}
-        />
-      )}
-
+      {showEndConfirm && <Modal title={isExpresser ? 'Ready to close this conversation?' : 'End this listening session?'} body={isExpresser ? 'You can always come back and express yourself again whenever you need to.' : hasInteracted ? "You've given your time and presence — that's a beautiful thing." : "It looks like you haven't responded yet. Are you sure you want to leave?"} primaryLabel={isExpresser ? 'Yes, close it' : hasInteracted ? 'End session' : 'Leave without chatting'} primaryAction={() => { setShowEndConfirm(false); handleEndChat() }} secondaryLabel="Keep talking" secondaryAction={() => setShowEndConfirm(false)} />}
       <div className="page" style={{ justifyContent: 'flex-start', height: '100dvh' }}>
         <div style={{ padding: '52px 24px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
           <button onClick={onBack} style={{ color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer' }}>
@@ -804,29 +688,19 @@ function ChatView({ sessionId, isExpresser, isSeedSession, isAISession, post, my
             <button onClick={() => setShowEndConfirm(true)} style={{ fontSize: 12, color: 'var(--text-tertiary)', padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', background: 'none' }}>End</button>
           </div>
         </div>
-
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {!isExpresser && (
-            <div style={{ textAlign: 'center', padding: '10px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 8 }}>
-              <p style={{ fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.6 }}>Be present, not a problem-solver. Let them feel heard first. 💙</p>
-            </div>
-          )}
-
+          {!isExpresser && <div style={{ textAlign: 'center', padding: '10px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 8 }}><p style={{ fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.6 }}>Be present, not a problem-solver. Let them feel heard first. 💙</p></div>}
           {loading && <div style={{ textAlign: 'center', padding: 20 }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--accent)', display: 'inline-block', animation: 'pulse 1.2s infinite' }} /></div>}
-
           {messages.map(msg => {
             const isMine = msg.sender_id === currentUserId
             return (
               <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: isMine ? 'flex-end' : 'flex-start', gap: 4 }}>
                 {!isMine && <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}><Avatar url={otherAvatar} name={otherName} size={22} /><span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{otherName}</span></div>}
                 {isMine && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, marginBottom: 2 }}><span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{myName}</span><Avatar url={myAvatar} name={myName} size={22} /></div>}
-                <div style={{ maxWidth: '78%', padding: '12px 16px', borderRadius: isMine ? '18px 18px 4px 18px' : '18px 18px 18px 4px', background: isMine ? 'var(--accent)' : 'var(--bg2)', border: isMine ? 'none' : '1px solid var(--border)', fontSize: 15, lineHeight: 1.6, color: isMine ? '#fff' : 'var(--text-secondary)' }}>
-                  {msg.content}
-                </div>
+                <div style={{ maxWidth: '78%', padding: '12px 16px', borderRadius: isMine ? '18px 18px 4px 18px' : '18px 18px 18px 4px', background: isMine ? 'var(--accent)' : 'var(--bg2)', border: isMine ? 'none' : '1px solid var(--border)', fontSize: 15, lineHeight: 1.6, color: isMine ? '#fff' : 'var(--text-secondary)' }}>{msg.content}</div>
               </div>
             )
           })}
-
           {(otherTyping || aiThinking) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Avatar url={otherAvatar} name={otherName} size={22} />
@@ -837,17 +711,12 @@ function ChatView({ sessionId, isExpresser, isSeedSession, isAISession, post, my
           )}
           <div ref={bottomRef} />
         </div>
-
         <div style={{ padding: '12px 16px 36px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'flex-end', flexShrink: 0, position: 'relative' }}>
           {showEmoji && <EmojiPicker onSelect={insertEmoji} onClose={() => setShowEmoji(false)} />}
           <button onClick={() => setShowEmoji(s => !s)} style={{ width: 40, height: 40, borderRadius: '50%', background: showEmoji ? 'var(--accent-dim)' : 'transparent', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, fontSize: 18 }}>🙂</button>
-          <textarea ref={inputRef} value={input}
-            onChange={e => { setInput(e.target.value); if (!isAIChat) broadcastTyping() }}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-            placeholder={isExpresser ? 'Say what you need to say...' : 'Say something kind...'}
-            rows={1} style={{ flex: 1, padding: '12px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 20, fontSize: 15, color: 'var(--text)', resize: 'none', lineHeight: 1.5, transition: 'border-color var(--transition)' }}
-            onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-            onBlur={e => e.target.style.borderColor = 'var(--border)'} />
+          <textarea ref={inputRef} value={input} onChange={e => { setInput(e.target.value); if (!isAIChat) broadcastTyping() }} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }} placeholder={isExpresser ? 'Say what you need to say...' : 'Say something kind...'} rows={1}
+            style={{ flex: 1, padding: '12px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 20, fontSize: 15, color: 'var(--text)', resize: 'none', lineHeight: 1.5, transition: 'border-color var(--transition)' }}
+            onFocus={e => e.target.style.borderColor = 'var(--accent)'} onBlur={e => e.target.style.borderColor = 'var(--border)'} />
           <button onClick={send} disabled={!input.trim() || aiThinking} style={{ width: 44, height: 44, borderRadius: '50%', background: input.trim() ? 'var(--accent)' : 'var(--bg3)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background var(--transition)', flexShrink: 0, cursor: input.trim() ? 'pointer' : 'default' }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
           </button>
