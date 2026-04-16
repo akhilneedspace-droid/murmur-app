@@ -5,52 +5,62 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getAIResponse } from '../lib/ai'
 
+// ── Greeting by time ───────────────────────────────────────────
 function getGreeting() {
   const h = new Date().getHours()
-  if (h < 12) return 'Good morning'
-  if (h < 17) return 'Good afternoon'
-  if (h < 21) return 'Good evening'
-  return 'Still up?'
+  if (h >= 23 || h < 4)  return 'Still up? All okay?'
+  if (h >= 4  && h < 12) return 'Good morning'
+  if (h >= 12 && h < 16) return 'Good afternoon'
+  if (h >= 16 && h < 18) return 'Good evening'
+  if (h >= 18 && h < 20) return 'Hope your evening is going great!'
+  if (h >= 20 && h < 23) return "Don't forget to sleep on time. Good night."
+  return 'Hey there'
 }
 
-// Star milestone titles
-function getStarTitle(count) {
-  if (count >= 10) return 'Legend'
-  if (count >= 4) return 'Rockstar'
-  if (count >= 1) return 'Star'
-  return null
-}
-
+// ── Star milestones ────────────────────────────────────────────
 function getFilledStars(count) {
   if (count >= 10) return 3
-  if (count >= 4) return 2
-  if (count >= 1) return 1
+  if (count >= 4)  return 2
+  if (count >= 1)  return 1
   return 0
 }
 
-// Compact star display shown under the greeting
+function getStarHoverLabel(filledCount) {
+  if (filledCount >= 3) return "You're a Legend 🏆"
+  if (filledCount >= 2) return "You're a Rockstar 💫"
+  if (filledCount >= 1) return "You're a Star ✨"
+  return null
+}
+
 function ListenerStars({ count }) {
+  const [hovered, setHovered] = useState(false)
   if (count < 1) return null
   const filled = getFilledStars(count)
-  const title = getStarTitle(count)
-  const nextMilestone = count < 1 ? 1 : count < 4 ? 4 : count < 10 ? 10 : null
-  const tooltipText = nextMilestone
-    ? `${title} · ${nextMilestone - count} more to next level`
-    : `${title} · Max level reached!`
+  const hoverLabel = getStarHoverLabel(filled)
+  const next = count < 4 ? `${4 - count} more to Rockstar` : count < 10 ? `${10 - count} more to Legend` : 'Max level!'
 
   return (
     <div
-      title={tooltipText}
-      style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, cursor: 'default' }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginTop: 4, cursor: 'default', position: 'relative' }}
     >
       {[0, 1, 2].map(i => (
-        <span key={i} style={{ fontSize: 14, opacity: i < filled ? 1 : 0.25, filter: i < filled ? 'none' : 'grayscale(1)' }}>
+        <span key={i} style={{ fontSize: 15, opacity: i < filled ? 1 : 0.2, filter: i < filled ? 'none' : 'grayscale(1)', transition: 'opacity 0.2s' }}>
           ⭐
         </span>
       ))}
-      <span style={{ fontSize: 12, color: 'var(--teal)', fontWeight: 500, marginLeft: 4 }}>
-        {title}
-      </span>
+      {hovered && (
+        <div style={{
+          position: 'absolute', left: 0, top: '130%',
+          background: 'var(--bg3)', border: '1px solid var(--border)',
+          borderRadius: 8, padding: '6px 12px', whiteSpace: 'nowrap',
+          fontSize: 12, color: 'var(--teal)', zIndex: 10,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.3)'
+        }}>
+          {hoverLabel} · {next}
+        </div>
+      )}
     </div>
   )
 }
@@ -74,12 +84,13 @@ const EMOJI_GROUPS = [
   ['🙏','💪','🤝','👋','✨','🌱','🌊','🌙','☀️','🕊️'],
 ]
 
+// ── Portal Modal ───────────────────────────────────────────────
 function Modal({ title, body, primaryLabel, primaryAction, secondaryLabel, secondaryAction, danger }) {
   return createPortal(
-    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 24px' }}>
-      <div style={{ width: '100%', maxWidth: 380, background: 'var(--bg2)', borderRadius: 20, padding: '28px 24px', display: 'flex', flexDirection: 'column', gap: 14, boxShadow: '0 24px 80px rgba(0,0,0,0.4)' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 24px' }}>
+      <div style={{ width: '100%', maxWidth: 380, background: 'var(--bg2)', borderRadius: 20, padding: '28px 24px', display: 'flex', flexDirection: 'column', gap: 14, boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}>
         <p style={{ fontSize: 17, fontWeight: 500, textAlign: 'center', lineHeight: 1.4, color: 'var(--text)' }}>{title}</p>
-        {body && <p style={{ fontSize: 14, color: 'var(--text-secondary)', textAlign: 'center', lineHeight: 1.6 }}>{body}</p>}
+        {body && <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.7)', textAlign: 'center', lineHeight: 1.6 }}>{body}</p>}
         {primaryLabel && <button onClick={primaryAction} style={{ width: '100%', padding: 14, borderRadius: 'var(--radius)', background: danger ? '#E24B4A' : 'var(--accent)', border: 'none', color: '#fff', fontSize: 15, fontWeight: 500, cursor: 'pointer' }}>{primaryLabel}</button>}
         {secondaryLabel && <button onClick={secondaryAction} className="btn-ghost">{secondaryLabel}</button>}
       </div>
@@ -88,6 +99,7 @@ function Modal({ title, body, primaryLabel, primaryAction, secondaryLabel, secon
   )
 }
 
+// ── Avatar ─────────────────────────────────────────────────────
 function Avatar({ url, name, size = 36, style: extra = {} }) {
   const initial = (name || '?')[0].toUpperCase()
   return (
@@ -97,6 +109,7 @@ function Avatar({ url, name, size = 36, style: extra = {} }) {
   )
 }
 
+// ── Rating Screen ──────────────────────────────────────────────
 function RatingScreen({ onSubmit, onSkip }) {
   const [selected, setSelected] = useState(null)
   const OPTIONS = [
@@ -108,24 +121,25 @@ function RatingScreen({ onSubmit, onSkip }) {
     <div className="page" style={{ padding: '0 28px', justifyContent: 'center', alignItems: 'center', gap: 28, textAlign: 'center' }}>
       <div>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 400, letterSpacing: '-0.01em', marginBottom: 10 }}>How did that feel?</h2>
-        <p style={{ fontSize: 15, color: 'var(--text-secondary)', lineHeight: 1.6 }}>Your honest feedback helps us make Murmur better for everyone.</p>
+        <p style={{ fontSize: 15, color: 'rgba(240,239,232,0.6)', lineHeight: 1.6 }}>Your honest feedback helps us make Murmur better for everyone.</p>
       </div>
       <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>
         {OPTIONS.map(opt => (
           <button key={opt.value} onClick={() => setSelected(opt.value)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '16px 20px', borderRadius: 'var(--radius)', background: selected === opt.value ? 'var(--accent-dim)' : 'var(--bg2)', border: `1px solid ${selected === opt.value ? 'var(--accent)' : 'var(--border)'}`, cursor: 'pointer', transition: 'all var(--transition)', minWidth: 80 }}>
             <span style={{ fontSize: 28 }}>{opt.emoji}</span>
-            <span style={{ fontSize: 12, color: selected === opt.value ? 'var(--accent)' : 'var(--text-secondary)' }}>{opt.label}</span>
+            <span style={{ fontSize: 12, color: selected === opt.value ? 'var(--accent)' : 'rgba(240,239,232,0.6)' }}>{opt.label}</span>
           </button>
         ))}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', maxWidth: 300 }}>
         <button className="btn-primary" disabled={!selected} onClick={() => onSubmit(selected)}>Share my feedback</button>
-        <button onClick={onSkip} style={{ fontSize: 14, color: 'var(--text-tertiary)', textDecoration: 'underline', cursor: 'pointer', background: 'none', border: 'none' }}>Skip for now</button>
+        <button onClick={onSkip} style={{ fontSize: 14, color: 'rgba(240,239,232,0.5)', textDecoration: 'underline', cursor: 'pointer', background: 'none', border: 'none' }}>Skip for now</button>
       </div>
     </div>
   )
 }
 
+// ── Main Dashboard ─────────────────────────────────────────────
 export default function Dashboard() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -219,12 +233,11 @@ export default function Dashboard() {
         <Modal title="You have an ongoing conversation" body="It looks like you stepped away from a chat. Would you like to continue where you left off?" primaryLabel="Continue conversation" primaryAction={() => { setShowResumeModal(false); setSelectedChat(pendingListenerSession); setView('chat-detail') }} secondaryLabel="Leave it for now" secondaryAction={() => { setShowResumeModal(false); setPendingListenerSession(null) }} />
       )}
 
-      {/* Header with stars */}
+      {/* Header */}
       <div style={{ position: 'relative', zIndex: 1, paddingTop: 52, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28, opacity: visible ? 1 : 0, transition: 'opacity 0.5s ease' }}>
         <div>
-          <p style={{ fontSize: 13, color: 'var(--text-tertiary)', marginBottom: 2 }}>{getGreeting()}</p>
-          <h2 style={{ fontSize: 22, fontWeight: 500 }}>Hey, {firstName} 👋</h2>
-          {/* Stars shown under name — compact and meaningful */}
+          <p style={{ fontSize: 13, color: 'rgba(240,239,232,0.55)', marginBottom: 2 }}>{getGreeting()}</p>
+          <h2 style={{ fontSize: 22, fontWeight: 500, color: 'var(--text)' }}>Hey, {firstName} 👋</h2>
           <ListenerStars count={listenerCount} />
         </div>
         <button onClick={() => navigate('/account')} style={{ background: 'none', cursor: 'pointer', border: 'none', marginTop: 4 }}>
@@ -235,19 +248,16 @@ export default function Dashboard() {
       {/* Role cards */}
       <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: 12, opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(16px)', transition: 'opacity 0.6s ease 0.15s, transform 0.6s ease 0.15s' }}>
         <div style={{ marginBottom: 4 }}>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(24px, 6vw, 30px)', fontWeight: 400, letterSpacing: '-0.02em', lineHeight: 1.2, marginBottom: 6 }}>How do you want to show up today?</h1>
-          <p style={{ fontSize: 14, color: 'var(--text-tertiary)' }}>You can switch roles at any time.</p>
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(24px, 6vw, 30px)', fontWeight: 400, letterSpacing: '-0.02em', lineHeight: 1.2, marginBottom: 6, color: 'var(--text)' }}>How do you want to show up today?</h1>
+          <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.55)' }}>You can switch roles at any time.</p>
         </div>
-
         <RoleCard role="Expresser" title="Yes, I want to share my feelings" description="Write what's on your mind. Someone will listen — human or AI. You are seen." color="var(--accent)" hoverBorder="rgba(139,124,246,0.4)" hoverBg="var(--accent-glow)" onClick={() => setView('expresser')} />
         <RoleCard role="Listener" title="I want to be there for someone" description="Browse what people are sharing. Pick one and simply be present." color="var(--teal)" hoverBorder="rgba(93,202,165,0.4)" hoverBg="rgba(93,202,165,0.05)" onClick={() => setView('listener')} />
-
         <button onClick={() => { fetchPastChats(); setView('chats') }} style={{ width: '100%', textAlign: 'left', padding: '16px 20px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'border-color var(--transition)' }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'}
-          onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
           <div>
             <p style={{ fontSize: 15, fontWeight: 500, color: 'var(--text)', marginBottom: 2 }}>Your conversations</p>
-            <p style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>{pastChats.length > 0 ? `${pastChats.length} past ${pastChats.length === 1 ? 'chat' : 'chats'}` : 'No conversations yet'}</p>
+            <p style={{ fontSize: 13, color: 'rgba(240,239,232,0.5)' }}>{pastChats.length > 0 ? `${pastChats.length} past ${pastChats.length === 1 ? 'chat' : 'chats'}` : 'No conversations yet'}</p>
           </div>
           <svg style={{ opacity: 0.4 }} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         </button>
@@ -266,7 +276,7 @@ function RoleCard({ role, title, description, color, hoverBorder, hoverBg, onCli
         <div>
           <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color, marginBottom: 8 }}>{role}</div>
           <div style={{ fontSize: 18, fontWeight: 500, marginBottom: 6, color: 'var(--text)' }}>{title}</div>
-          <div style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6 }}>{description}</div>
+          <div style={{ fontSize: 14, color: 'rgba(240,239,232,0.65)', lineHeight: 1.6 }}>{description}</div>
         </div>
         <svg style={{ flexShrink: 0, marginTop: 2, opacity: 0.4 }} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
       </div>
@@ -274,6 +284,7 @@ function RoleCard({ role, title, description, color, hoverBorder, hoverBg, onCli
   )
 }
 
+// ── Expresser View ─────────────────────────────────────────────
 function ExpresserView({ user, myProfile, onBack, onSessionStart }) {
   const [text, setText] = useState('')
   const [anonymous, setAnonymous] = useState(false)
@@ -330,13 +341,13 @@ function ExpresserView({ user, myProfile, onBack, onSessionStart }) {
         <div style={{ animation: 'fadeUp 0.6s ease both' }}>
           <div style={{ fontSize: 52, marginBottom: 16, animation: 'float 3s ease-in-out infinite' }}>🤍</div>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(26px, 7vw, 34px)', fontWeight: 400, color: 'var(--accent)', letterSpacing: '-0.02em', marginBottom: 14 }}>Thank you for sharing.</h2>
-          <p style={{ fontSize: 15, color: 'var(--text-secondary)', lineHeight: 1.8, maxWidth: 300 }}>We know it wasn't easy to put your heart into words. What you just did takes real courage — and it matters deeply.</p>
+          <p style={{ fontSize: 15, color: 'rgba(240,239,232,0.7)', lineHeight: 1.8, maxWidth: 300 }}>We know it wasn't easy to put your heart into words. What you just did takes real courage — and it matters deeply.</p>
         </div>
         <div style={{ width: '100%', maxWidth: 340, padding: '16px 20px', background: 'var(--bg2)', border: '1px solid rgba(139,124,246,0.2)', borderRadius: 'var(--radius)', textAlign: 'left', animation: 'fadeUp 0.6s ease 0.2s both' }}>
           <p style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>Your words</p>
-          <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.7, fontStyle: 'italic' }}>"{postContent.slice(0, 140)}{postContent.length > 140 ? '...' : ''}"</p>
+          <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.7)', lineHeight: 1.7, fontStyle: 'italic' }}>"{postContent.slice(0, 140)}{postContent.length > 140 ? '...' : ''}"</p>
         </div>
-        <p style={{ fontSize: 13, color: 'var(--text-tertiary)', animation: 'fadeUp 0.6s ease 0.4s both' }}>Finding a listener for you...</p>
+        <p style={{ fontSize: 13, color: 'rgba(240,239,232,0.45)', animation: 'fadeUp 0.6s ease 0.4s both' }}>Finding a listener for you...</p>
       </div>
     )
   }
@@ -348,7 +359,7 @@ function ExpresserView({ user, myProfile, onBack, onSessionStart }) {
         <div style={{ width: '100%', maxWidth: 340, display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ padding: '16px 20px', background: 'var(--bg2)', border: '1px solid rgba(139,124,246,0.2)', borderRadius: 'var(--radius)' }}>
             <p style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>You shared</p>
-            <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.7, fontStyle: 'italic' }}>"{postContent.slice(0, 140)}{postContent.length > 140 ? '...' : ''}"</p>
+            <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.7)', lineHeight: 1.7, fontStyle: 'italic' }}>"{postContent.slice(0, 140)}{postContent.length > 140 ? '...' : ''}"</p>
           </div>
           <div style={{ padding: '18px 20px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -360,19 +371,16 @@ function ExpresserView({ user, myProfile, onBack, onSessionStart }) {
                 <div style={{ height: 3, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
                   <div style={{ height: '100%', width: `${pct}%`, background: 'var(--accent)', borderRadius: 2, transition: 'width 1s linear' }} />
                 </div>
-                <p style={{ fontSize: 13, color: 'var(--text-tertiary)', lineHeight: 1.6 }}>If no one is free right now, a warm listener will step in for you.</p>
+                <p style={{ fontSize: 13, color: 'rgba(240,239,232,0.5)', lineHeight: 1.6 }}>If no one is free right now, a warm listener will step in for you.</p>
               </>
             )}
           </div>
           <div style={{ padding: '16px 20px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
-            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: showJournal ? 10 : 0, lineHeight: 1.6 }}>💭 Sometimes writing more helps. Anything else on your mind?</p>
-            {showJournal ? (
-              <textarea value={journalText} onChange={e => setJournalText(e.target.value)} placeholder="Keep going... this is just for you, not sent to anyone." rows={3} autoFocus
-                style={{ width: '100%', padding: '12px', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 14, lineHeight: 1.7, color: 'var(--text)', resize: 'none', marginTop: 4 }}
-                onFocus={e => e.target.style.borderColor = 'var(--accent)'} onBlur={e => e.target.style.borderColor = 'var(--border)'} />
-            ) : (
-              <button onClick={() => setShowJournal(true)} style={{ fontSize: 13, color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer', background: 'none', border: 'none', marginTop: 6 }}>Write a little more</button>
-            )}
+            <p style={{ fontSize: 13, color: 'rgba(240,239,232,0.65)', marginBottom: showJournal ? 10 : 0, lineHeight: 1.6 }}>💭 Sometimes writing more helps. Anything else on your mind?</p>
+            {showJournal
+              ? <textarea value={journalText} onChange={e => setJournalText(e.target.value)} placeholder="Keep going... this is just for you, not sent to anyone." rows={3} autoFocus style={{ width: '100%', padding: '12px', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 14, lineHeight: 1.7, color: 'var(--text)', resize: 'none', marginTop: 4 }} onFocus={e => e.target.style.borderColor = 'var(--accent)'} onBlur={e => e.target.style.borderColor = 'var(--border)'} />
+              : <button onClick={() => setShowJournal(true)} style={{ fontSize: 13, color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer', background: 'none', border: 'none', marginTop: 6 }}>Write a little more</button>
+            }
           </div>
         </div>
       </div>
@@ -385,31 +393,31 @@ function ExpresserView({ user, myProfile, onBack, onSessionStart }) {
       <div className="page" style={{ padding: '0 24px', justifyContent: 'space-between' }}>
         <div className="orb" style={{ width: 300, height: 300, background: 'radial-gradient(circle, rgba(139,124,246,0.10) 0%, transparent 70%)', top: '-40px', right: '-60px' }} />
         <div style={{ position: 'relative', zIndex: 1, paddingTop: 52 }}>
-          <button onClick={() => text.trim().length > 0 ? setShowConfirm(true) : onBack()} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-tertiary)', fontSize: 14, background: 'none', border: 'none', cursor: 'pointer' }}>
+          <button onClick={() => text.trim().length > 0 ? setShowConfirm(true) : onBack()} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'rgba(240,239,232,0.5)', fontSize: 14, background: 'none', border: 'none', cursor: 'pointer' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
             Back
           </button>
         </div>
         <div style={{ position: 'relative', zIndex: 1, flex: 1, display: 'flex', flexDirection: 'column', gap: 20, paddingTop: 24, opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(12px)', transition: 'opacity 0.35s ease, transform 0.35s ease' }}>
           <div>
-            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 400, letterSpacing: '-0.01em', marginBottom: 6 }}>What's on your mind?</h2>
-            <p style={{ fontSize: 14, color: 'var(--text-tertiary)', lineHeight: 1.6 }}>There's no right way to do this. Just say what's true for you.</p>
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 400, letterSpacing: '-0.01em', marginBottom: 6, color: 'var(--text)' }}>What's on your mind?</h2>
+            <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.55)', lineHeight: 1.6 }}>There's no right way to do this. Just say what's true for you.</p>
           </div>
           <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Start wherever feels right..." rows={6}
             style={{ width: '100%', padding: '16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', fontSize: 15, lineHeight: 1.7, color: 'var(--text)', resize: 'none', transition: 'border-color var(--transition)' }}
             onFocus={e => e.target.style.borderColor = 'rgba(139,124,246,0.4)'} onBlur={e => e.target.style.borderColor = 'var(--border)'} />
           <div>
-            <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 10, letterSpacing: '0.04em' }}>HOW ARE YOU FEELING? (optional)</p>
+            <p style={{ fontSize: 12, color: 'rgba(240,239,232,0.45)', marginBottom: 10, letterSpacing: '0.04em' }}>HOW ARE YOU FEELING? (optional)</p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {TAGS.map(t => (
-                <button key={t} onClick={() => setTag(tag === t ? null : t)} style={{ padding: '7px 14px', borderRadius: 20, fontSize: 13, border: `1px solid ${tag === t ? 'var(--accent)' : 'var(--border)'}`, background: tag === t ? 'var(--accent-dim)' : 'transparent', color: tag === t ? 'var(--accent)' : 'var(--text-secondary)', transition: 'all var(--transition)', cursor: 'pointer' }}>{t}</button>
+                <button key={t} onClick={() => setTag(tag === t ? null : t)} style={{ padding: '7px 14px', borderRadius: 20, fontSize: 13, border: `1px solid ${tag === t ? 'var(--accent)' : 'var(--border)'}`, background: tag === t ? 'var(--accent-dim)' : 'transparent', color: tag === t ? 'var(--accent)' : 'rgba(240,239,232,0.6)', transition: 'all var(--transition)', cursor: 'pointer' }}>{t}</button>
               ))}
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
             <div>
-              <p style={{ fontSize: 14, fontWeight: 500, marginBottom: 2 }}>Share anonymously</p>
-              <p style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Your name stays hidden from listeners</p>
+              <p style={{ fontSize: 14, fontWeight: 500, marginBottom: 2, color: 'var(--text)' }}>Share anonymously</p>
+              <p style={{ fontSize: 12, color: 'rgba(240,239,232,0.5)' }}>Your name stays hidden from listeners</p>
             </div>
             <button onClick={() => setAnonymous(a => !a)} style={{ width: 44, height: 26, borderRadius: 13, background: anonymous ? 'var(--accent)' : 'var(--bg3)', border: '1px solid var(--border)', position: 'relative', transition: 'background var(--transition)', cursor: 'pointer', flexShrink: 0 }}>
               <span style={{ position: 'absolute', top: 3, left: anonymous ? 20 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left var(--transition)' }} />
@@ -425,6 +433,7 @@ function ExpresserView({ user, myProfile, onBack, onSessionStart }) {
   )
 }
 
+// ── Listener View ──────────────────────────────────────────────
 function ListenerView({ user, myProfile, onBack, onComplete }) {
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -449,6 +458,7 @@ function ListenerView({ user, myProfile, onBack, onComplete }) {
       if (!seedChatStore[post.id]) seedChatStore[post.id] = [{ id: `seed-init-${post.id}`, sender_id: 'other', content: post.content, created_at: new Date().toISOString() }]
       setActiveSession({ id: `seed-${post.id}`, is_seed: true, post }); setShowEndTip(true); return
     }
+    // Explicitly fetch expresser profile to fix "Someone" bug
     const { data: expresserProfile } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', post.user_id).single()
     const enrichedPost = { ...post, profiles: expresserProfile ?? post.profiles }
     const { data: session } = await supabase.from('sessions').insert({ post_id: post.id, expresser_id: post.user_id, listener_id: user.id, status: 'active' }).select().single()
@@ -461,12 +471,12 @@ function ListenerView({ user, myProfile, onBack, onComplete }) {
     <div className="page" style={{ padding: '0 24px', justifyContent: 'flex-start' }}>
       <div className="orb" style={{ width: 300, height: 300, background: 'radial-gradient(circle, rgba(93,202,165,0.08) 0%, transparent 70%)', top: '-40px', right: '-60px' }} />
       <div style={{ position: 'relative', zIndex: 1, paddingTop: 52, marginBottom: 24 }}>
-        <button onClick={() => onBack(null)} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-tertiary)', fontSize: 14, marginBottom: 20, background: 'none', border: 'none', cursor: 'pointer' }}>
+        <button onClick={() => onBack(null)} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'rgba(240,239,232,0.5)', fontSize: 14, marginBottom: 20, background: 'none', border: 'none', cursor: 'pointer' }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           Back
         </button>
-        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 400, letterSpacing: '-0.01em', marginBottom: 6 }}>Someone needs a listener.</h2>
-        <p style={{ fontSize: 14, color: 'var(--text-tertiary)' }}>Choose one person to be present with.</p>
+        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 400, letterSpacing: '-0.01em', marginBottom: 6, color: 'var(--text)' }}>Someone needs a listener.</h2>
+        <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.5)' }}>Choose one person to be present with.</p>
       </div>
       <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 48, opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(12px)', transition: 'opacity 0.4s ease, transform 0.4s ease' }}>
         {loading ? <div style={{ textAlign: 'center', padding: 40 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--teal)', display: 'inline-block', animation: 'pulse 1.2s infinite' }} /></div>
@@ -487,14 +497,14 @@ function PostCard({ post, delay, onClick }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Avatar url={avatarUrl} name={name} size={28} />
-          <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{name}</span>
+          <span style={{ fontSize: 13, color: 'rgba(240,239,232,0.75)' }}>{name}</span>
         </div>
-        <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{timeAgo(post.created_at)}</span>
+        <span style={{ fontSize: 11, color: 'rgba(240,239,232,0.4)' }}>{timeAgo(post.created_at)}</span>
       </div>
-      <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.65, marginBottom: 12 }}>"{post.content}"</p>
+      <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.7)', lineHeight: 1.65, marginBottom: 12 }}>"{post.content}"</p>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         {post.emotion_tag && <span style={{ fontSize: 11, padding: '4px 10px', borderRadius: 10, background: 'var(--bg3)', color: 'var(--teal)', border: '1px solid rgba(93,202,165,0.2)' }}>{post.emotion_tag}</span>}
-        <span style={{ fontSize: 12, marginLeft: 'auto', color: hovered ? 'var(--teal)' : 'var(--text-tertiary)', transition: 'color var(--transition)' }}>{hovered ? 'Start listening →' : 'Tap to listen'}</span>
+        <span style={{ fontSize: 12, marginLeft: 'auto', color: hovered ? 'var(--teal)' : 'rgba(240,239,232,0.4)', transition: 'color var(--transition)' }}>{hovered ? 'Start listening →' : 'Tap to listen'}</span>
       </div>
     </button>
   )
@@ -506,15 +516,15 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
   return (
     <div className="page" style={{ padding: '0 24px', justifyContent: 'flex-start' }}>
       <div style={{ position: 'relative', zIndex: 1, paddingTop: 52, marginBottom: 24 }}>
-        <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-tertiary)', fontSize: 14, marginBottom: 20, background: 'none', border: 'none', cursor: 'pointer' }}>
+        <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'rgba(240,239,232,0.5)', fontSize: 14, marginBottom: 20, background: 'none', border: 'none', cursor: 'pointer' }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           Back
         </button>
-        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 400, letterSpacing: '-0.01em', marginBottom: 6 }}>Your conversations</h2>
-        <p style={{ fontSize: 14, color: 'var(--text-tertiary)' }}>Every conversation here meant something.</p>
+        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 400, letterSpacing: '-0.01em', marginBottom: 6, color: 'var(--text)' }}>Your conversations</h2>
+        <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.5)' }}>Every conversation here meant something.</p>
       </div>
       {chats.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px 24px', color: 'var(--text-tertiary)' }}>
+        <div style={{ textAlign: 'center', padding: '48px 24px', color: 'rgba(240,239,232,0.4)' }}>
           <p style={{ fontSize: 32, marginBottom: 16 }}>◎</p>
           <p style={{ fontSize: 15 }}>No conversations yet.</p>
           <p style={{ fontSize: 13, marginTop: 8 }}>When you connect with someone, it'll show up here.</p>
@@ -525,7 +535,6 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
             const isExp = chat.expresser_id === userId
             const isOngoing = chat.status === 'active'
             const preview = chat.posts?.content?.slice(0, 80) ?? ''
-            const tag = chat.posts?.emotion_tag
             const isAnon = chat.posts?.is_anonymous
             const otherName = isAnon ? 'Anonymous' : (chat.otherProfile?.full_name?.split(' ')[0] ?? 'Someone')
             const otherAvatar = isAnon ? null : chat.otherProfile?.avatar_url
@@ -535,18 +544,20 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: isExp ? 'var(--accent)' : 'var(--teal)' }}>{isExp ? 'You expressed' : 'You listened'}</span>
-                      <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 600, background: isOngoing ? 'rgba(93,202,165,0.15)' : 'rgba(136,135,128,0.15)', color: isOngoing ? 'var(--teal)' : 'var(--text-tertiary)', border: `1px solid ${isOngoing ? 'rgba(93,202,165,0.3)' : 'var(--border)'}`, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{isOngoing ? 'Ongoing' : 'Ended'}</span>
+                      <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 600, background: isOngoing ? 'rgba(93,202,165,0.15)' : 'rgba(136,135,128,0.15)', color: isOngoing ? 'var(--teal)' : 'rgba(240,239,232,0.4)', border: `1px solid ${isOngoing ? 'rgba(93,202,165,0.3)' : 'var(--border)'}`, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{isOngoing ? 'Ongoing' : 'Ended'}</span>
                     </div>
-                    <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{timeAgo(chat.created_at)}</span>
+                    <span style={{ fontSize: 11, color: 'rgba(240,239,232,0.4)' }}>{timeAgo(chat.created_at)}</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                     <Avatar url={otherAvatar} name={otherName} size={22} />
-                    <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{otherName}</span>
+                    <span style={{ fontSize: 12, color: 'rgba(240,239,232,0.5)' }}>{otherName}</span>
                   </div>
-                  <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6 }}>"{preview}{preview.length === 80 ? '...' : ''}"</p>
-                  {tag && <span style={{ display: 'inline-block', marginTop: 8, fontSize: 11, padding: '3px 8px', borderRadius: 8, background: 'var(--bg3)', color: isExp ? 'var(--accent)' : 'var(--teal)' }}>{tag}</span>}
+                  <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.7)', lineHeight: 1.6 }}>"{preview}{preview.length === 80 ? '...' : ''}"</p>
+                  {chat.posts?.emotion_tag && <span style={{ display: 'inline-block', marginTop: 8, fontSize: 11, padding: '3px 8px', borderRadius: 8, background: 'var(--bg3)', color: isExp ? 'var(--accent)' : 'var(--teal)' }}>{chat.posts.emotion_tag}</span>}
                 </button>
-                <button onClick={() => setConfirmDelete(chat.id)} style={{ color: 'var(--text-tertiary)', fontSize: 20, cursor: 'pointer', flexShrink: 0, padding: 4, background: 'none', border: 'none', lineHeight: 1 }}>×</button>
+                <button onClick={() => setConfirmDelete(chat.id)} style={{ color: 'rgba(240,239,232,0.3)', fontSize: 20, cursor: 'pointer', flexShrink: 0, padding: 4, background: 'none', border: 'none', lineHeight: 1 }}
+                  onMouseEnter={e => e.currentTarget.style.color = 'var(--coral)'}
+                  onMouseLeave={e => e.currentTarget.style.color = 'rgba(240,239,232,0.3)'}>×</button>
               </div>
             )
           })}
@@ -572,11 +583,13 @@ function EmojiPicker({ onSelect, onClose }) {
   )
 }
 
+// ── Chat View ──────────────────────────────────────────────────
 function ChatView({ sessionId, isExpresser, isSeedSession, isAISession, post, myProfile, currentUserId, preloadedOtherProfile, showEndTip, onEndTipDismiss, onBack, onEnd }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [otherTyping, setOtherTyping] = useState(false)
+  const [pendingMsg, setPendingMsg] = useState(null)   // shows typing dots then reveals msg
   const [aiThinking, setAiThinking] = useState(false)
   const [showEmoji, setShowEmoji] = useState(false)
   const [showEndConfirm, setShowEndConfirm] = useState(false)
@@ -587,8 +600,12 @@ function ChatView({ sessionId, isExpresser, isSeedSession, isAISession, post, my
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
   const typingChannel = useRef(null)
-  const isAIChat = isSeedSession || isAISession
+  const pendingTimer = useRef(null)
 
+  const isAIChat = isSeedSession || isAISession
+  const TYPING_REVEAL_MS = 3000  // show typing dots for 3 seconds before revealing message
+
+  // Load other profile
   useEffect(() => {
     if (preloadedOtherProfile) { setOtherProfile(preloadedOtherProfile); return }
     if (isAIChat) return
@@ -604,16 +621,45 @@ function ChatView({ sessionId, isExpresser, isSeedSession, isAISession, post, my
     load()
   }, [post, isExpresser, isAIChat, sessionId, preloadedOtherProfile])
 
+  // Load messages
   useEffect(() => {
     if (isSeedSession) { const pid = sessionId.replace('seed-', ''); const msgs = seedChatStore[pid] || []; setMessages(msgs); setHasInteracted(msgs.some(m => m.sender_id === currentUserId)); setLoading(false); return }
     supabase.from('messages').select('*').eq('session_id', sessionId).order('created_at', { ascending: true }).then(({ data }) => { const msgs = data || []; setMessages(msgs); setHasInteracted(msgs.some(m => m.sender_id === currentUserId)); setLoading(false) })
   }, [sessionId])
 
+  // Real-time with 3-second typing reveal
   useEffect(() => {
     if (isAIChat) return
-    const ch = supabase.channel(`chat-${sessionId}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `session_id=eq.${sessionId}` }, (p) => { if (p.new.sender_id !== currentUserId) { setMessages(m => [...m, p.new]); setOtherTyping(false) } }).subscribe()
-    typingChannel.current = supabase.channel(`typing-${sessionId}`).on('broadcast', { event: 'typing' }, ({ payload }) => { if (payload.user_id !== currentUserId) { setOtherTyping(true); setTimeout(() => setOtherTyping(false), 2000) } }).subscribe()
-    return () => { supabase.removeChannel(ch); if (typingChannel.current) supabase.removeChannel(typingChannel.current) }
+    const ch = supabase.channel(`chat-${sessionId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `session_id=eq.${sessionId}` },
+        (payload) => {
+          if (payload.new.sender_id !== currentUserId) {
+            // Show typing dots for 3 seconds, then reveal message
+            setOtherTyping(true)
+            setPendingMsg(payload.new)
+            clearTimeout(pendingTimer.current)
+            pendingTimer.current = setTimeout(() => {
+              setOtherTyping(false)
+              setPendingMsg(null)
+              setMessages(m => [...m, payload.new])
+            }, TYPING_REVEAL_MS)
+          }
+        })
+      .subscribe()
+    typingChannel.current = supabase.channel(`typing-${sessionId}`)
+      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+        if (payload.user_id !== currentUserId) {
+          setOtherTyping(true)
+          clearTimeout(pendingTimer.current)
+          pendingTimer.current = setTimeout(() => setOtherTyping(false), 3000)
+        }
+      })
+      .subscribe()
+    return () => {
+      supabase.removeChannel(ch)
+      if (typingChannel.current) supabase.removeChannel(typingChannel.current)
+      clearTimeout(pendingTimer.current)
+    }
   }, [sessionId])
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, otherTyping, aiThinking])
@@ -628,7 +674,12 @@ function ChatView({ sessionId, isExpresser, isSeedSession, isAISession, post, my
     if (isAIChat) {
       const pid = sessionId.replace('seed-', ''); seedChatStore[pid] = updated; setAiThinking(true)
       const history = updated.map(m => ({ role: m.sender_id === currentUserId ? 'user' : 'assistant', content: m.content }))
-      const aiText = await getAIResponse(history, 'expresser', post?.content ?? ''); setAiThinking(false)
+      const aiText = await getAIResponse(history, 'expresser', post?.content ?? '')
+      // For AI: show typing for 3 seconds then reveal
+      setAiThinking(false)
+      setOtherTyping(true)
+      await new Promise(r => setTimeout(r, TYPING_REVEAL_MS))
+      setOtherTyping(false)
       const aiMsg = { id: `ai-${Date.now()}`, sender_id: 'other', content: aiText, created_at: new Date().toISOString() }
       const withAI = [...updated, aiMsg]; setMessages(withAI); seedChatStore[pid] = withAI; return
     }
@@ -663,7 +714,7 @@ function ChatView({ sessionId, isExpresser, isSeedSession, isAISession, post, my
       <div className="page" style={{ padding: '0 28px', justifyContent: 'center', alignItems: 'center', gap: 24, textAlign: 'center' }}>
         <div style={{ fontSize: 52, animation: 'float 3s ease-in-out infinite' }}>✨</div>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(26px, 7vw, 32px)', fontWeight: 400, letterSpacing: '-0.02em', color: 'var(--teal)' }}>You showed up for {otherName}.</h2>
-        <p style={{ fontSize: 15, color: 'var(--text-secondary)', lineHeight: 1.8, maxWidth: 300 }}>Being truly present for someone is one of the most human things there is. Thank you for being that person today.</p>
+        <p style={{ fontSize: 15, color: 'rgba(240,239,232,0.7)', lineHeight: 1.8, maxWidth: 300 }}>Being truly present for someone is one of the most human things there is. Thank you for being that person today.</p>
         <button className="btn-primary" style={{ maxWidth: 300 }} onClick={onEnd}>Back to home</button>
       </div>
     )
@@ -672,10 +723,19 @@ function ChatView({ sessionId, isExpresser, isSeedSession, isAISession, post, my
   return (
     <>
       {showEndTip && !isExpresser && <Modal title="You've started listening 💙" body="When your conversation feels complete, tap 'End' in the top right to close it with care." primaryLabel="Got it" primaryAction={onEndTipDismiss} />}
-      {showEndConfirm && <Modal title={isExpresser ? 'Ready to close this conversation?' : 'End this listening session?'} body={isExpresser ? 'You can always come back and express yourself again whenever you need to.' : hasInteracted ? "You've given your time and presence — that's a beautiful thing." : "It looks like you haven't responded yet. Are you sure you want to leave?"} primaryLabel={isExpresser ? 'Yes, close it' : hasInteracted ? 'End session' : 'Leave without chatting'} primaryAction={() => { setShowEndConfirm(false); handleEndChat() }} secondaryLabel="Keep talking" secondaryAction={() => setShowEndConfirm(false)} />}
+      {showEndConfirm && <Modal
+        title={isExpresser ? 'Ready to close this conversation?' : 'End this listening session?'}
+        body={isExpresser ? 'You can always come back and express yourself again whenever you need to.' : hasInteracted ? "You've given your time and presence — that's a beautiful thing." : "It looks like you haven't responded yet. Are you sure you want to leave?"}
+        primaryLabel={isExpresser ? 'Yes, close it' : hasInteracted ? 'End session' : 'Leave without chatting'}
+        primaryAction={() => { setShowEndConfirm(false); handleEndChat() }}
+        secondaryLabel="Keep talking"
+        secondaryAction={() => setShowEndConfirm(false)}
+      />}
+
       <div className="page" style={{ justifyContent: 'flex-start', height: '100dvh' }}>
+        {/* Header */}
         <div style={{ padding: '52px 24px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-          <button onClick={onBack} style={{ color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer' }}>
+          <button onClick={onBack} style={{ color: 'rgba(240,239,232,0.5)', display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer' }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           </button>
           <Avatar url={otherAvatar} name={otherName} size={38} />
@@ -685,32 +745,46 @@ function ChatView({ sessionId, isExpresser, isSeedSession, isAISession, post, my
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             {post?.emotion_tag && <span style={{ fontSize: 11, padding: '4px 10px', borderRadius: 10, background: 'var(--bg3)', color: 'var(--teal)', border: '1px solid rgba(93,202,165,0.2)' }}>{post.emotion_tag}</span>}
-            <button onClick={() => setShowEndConfirm(true)} style={{ fontSize: 12, color: 'var(--text-tertiary)', padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer', background: 'none' }}>End</button>
+            {/* Red End button — clearly visible */}
+            <button onClick={() => setShowEndConfirm(true)} style={{ fontSize: 12, fontWeight: 600, color: '#fff', padding: '5px 12px', border: 'none', borderRadius: 8, cursor: 'pointer', background: '#E24B4A', letterSpacing: '0.02em' }}>
+              End
+            </button>
           </div>
         </div>
+
+        {/* Messages */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {!isExpresser && <div style={{ textAlign: 'center', padding: '10px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 8 }}><p style={{ fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.6 }}>Be present, not a problem-solver. Let them feel heard first. 💙</p></div>}
+          {!isExpresser && (
+            <div style={{ textAlign: 'center', padding: '10px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 8 }}>
+              <p style={{ fontSize: 12, color: 'rgba(240,239,232,0.6)', lineHeight: 1.6 }}>Be present, not a problem-solver. Let them feel heard first. 💙</p>
+            </div>
+          )}
           {loading && <div style={{ textAlign: 'center', padding: 20 }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--accent)', display: 'inline-block', animation: 'pulse 1.2s infinite' }} /></div>}
+
           {messages.map(msg => {
             const isMine = msg.sender_id === currentUserId
             return (
               <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: isMine ? 'flex-end' : 'flex-start', gap: 4 }}>
-                {!isMine && <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}><Avatar url={otherAvatar} name={otherName} size={22} /><span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{otherName}</span></div>}
-                {isMine && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, marginBottom: 2 }}><span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{myName}</span><Avatar url={myAvatar} name={myName} size={22} /></div>}
-                <div style={{ maxWidth: '78%', padding: '12px 16px', borderRadius: isMine ? '18px 18px 4px 18px' : '18px 18px 18px 4px', background: isMine ? 'var(--accent)' : 'var(--bg2)', border: isMine ? 'none' : '1px solid var(--border)', fontSize: 15, lineHeight: 1.6, color: isMine ? '#fff' : 'var(--text-secondary)' }}>{msg.content}</div>
+                {!isMine && <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}><Avatar url={otherAvatar} name={otherName} size={22} /><span style={{ fontSize: 11, color: 'rgba(240,239,232,0.5)' }}>{otherName}</span></div>}
+                {isMine && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, marginBottom: 2 }}><span style={{ fontSize: 11, color: 'rgba(240,239,232,0.5)' }}>{myName}</span><Avatar url={myAvatar} name={myName} size={22} /></div>}
+                <div style={{ maxWidth: '78%', padding: '12px 16px', borderRadius: isMine ? '18px 18px 4px 18px' : '18px 18px 18px 4px', background: isMine ? 'var(--accent)' : 'var(--bg2)', border: isMine ? 'none' : '1px solid var(--border)', fontSize: 15, lineHeight: 1.6, color: isMine ? '#fff' : 'rgba(240,239,232,0.85)' }}>{msg.content}</div>
               </div>
             )
           })}
+
+          {/* Typing indicator — shows for 3 seconds before message appears */}
           {(otherTyping || aiThinking) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Avatar url={otherAvatar} name={otherName} size={22} />
               <div style={{ padding: '12px 16px', borderRadius: '18px 18px 18px 4px', background: 'var(--bg2)', border: '1px solid var(--border)', display: 'flex', gap: 5, alignItems: 'center' }}>
-                {[0, 1, 2].map(i => <span key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--text-tertiary)', display: 'inline-block', animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite` }} />)}
+                {[0, 1, 2].map(i => <span key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: 'rgba(240,239,232,0.5)', display: 'inline-block', animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite` }} />)}
               </div>
             </div>
           )}
           <div ref={bottomRef} />
         </div>
+
+        {/* Input */}
         <div style={{ padding: '12px 16px 36px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'flex-end', flexShrink: 0, position: 'relative' }}>
           {showEmoji && <EmojiPicker onSelect={insertEmoji} onClose={() => setShowEmoji(false)} />}
           <button onClick={() => setShowEmoji(s => !s)} style={{ width: 40, height: 40, borderRadius: '50%', background: showEmoji ? 'var(--accent-dim)' : 'transparent', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, fontSize: 18 }}>🙂</button>

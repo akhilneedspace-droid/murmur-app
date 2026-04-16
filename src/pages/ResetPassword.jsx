@@ -13,9 +13,17 @@ export default function ResetPassword() {
 
   useEffect(() => {
     // Supabase puts the token in the URL hash — listen for the session
-    supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') setReady(true)
-    })
+    supabase.auth.onAuthStateChange((event, session) => {
+  if (event === 'PASSWORD_RECOVERY') setReady(true)
+  // Also handle token from URL hash directly
+  if (session?.user && event === 'SIGNED_IN') setReady(true)
+})
+
+// Also parse hash on mount
+const hash = window.location.hash
+if (hash.includes('type=recovery') || hash.includes('access_token')) {
+  setReady(true)
+}
   }, [])
 
   async function handleSubmit(e) {
