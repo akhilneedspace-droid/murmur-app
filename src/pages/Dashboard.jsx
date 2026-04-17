@@ -28,8 +28,17 @@ function ListenerStars({ count }) {
   const [hovered, setHovered] = useState(false)
   if (count < 1) return null
   const filled = getFilledStars(count)
-  const labels = ['', "You're a Star ✨", "You're a Superstar 🌟", "You're a Rockstar 💫"]
-  const next = count < 4 ? `${4 - count} more to Superstar` : count < 10 ? `${10 - count} more to Rockstar` : 'You are a Legend 🏆'
+
+  // One label per tier, no contradictions
+  const title = filled === 3 ? "You're a Rockstar 💫"
+               : filled === 2 ? "You're a Superstar 🌟"
+               : "You're a Star ✨"
+
+  // Progress toward next tier, or max message
+  const progress = count < 4  ? `${4 - count} more listen${4 - count === 1 ? '' : 's'} to reach Superstar`
+                 : count < 10 ? `${10 - count} more listen${10 - count === 1 ? '' : 's'} to reach Rockstar`
+                 : 'You are at the top — thank you 🏆'
+
   return (
     <div onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
       style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginTop: 4, cursor: 'default', position: 'relative' }}>
@@ -37,8 +46,9 @@ function ListenerStars({ count }) {
         <span key={i} style={{ fontSize: 15, opacity: i < filled ? 1 : 0.2, filter: i < filled ? 'none' : 'grayscale(1)', transition: 'opacity 0.2s' }}>⭐</span>
       ))}
       {hovered && (
-        <div style={{ position: 'absolute', left: 0, top: '130%', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 12px', whiteSpace: 'nowrap', fontSize: 12, color: 'var(--teal)', zIndex: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
-          {labels[filled]} · {next}
+        <div style={{ position: 'absolute', left: 0, top: '130%', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 14px', whiteSpace: 'nowrap', fontSize: 12, color: 'var(--teal)', zIndex: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontWeight: 600 }}>{title}</span>
+          <span style={{ color: 'rgba(240,239,232,0.5)', fontSize: 11 }}>{progress}</span>
         </div>
       )}
     </div>
@@ -413,9 +423,28 @@ function ExpresserView({ user, myProfile, onBack, onSessionStart }) {
 
   async function handleAddJournalToPost() {
     if (!journalText.trim() || !postId) return
-    const newContent = postContent + '\n\n' + journalText.trim()
+    const addition = journalText.trim()
+    const newContent = postContent + '\n\n' + addition
+    // Update the post content in the database
     await supabase.from('posts').update({ content: newContent }).eq('id', postId)
     setPostContent(newContent)
+
+    // Also send it as a message in all active sessions for this post
+    // so listeners already in chat see the addition
+    const { data: activeSessions } = await supabase
+      .from('sessions')
+      .select('id')
+      .eq('post_id', postId)
+      .eq('status', 'active')
+    if (activeSessions?.length) {
+      const messageText = `📝 I wanted to add something: ${addition}`
+      await Promise.all(
+        activeSessions.map(s =>
+          supabase.from('messages').insert({ session_id: s.id, sender_id: user.id, content: messageText })
+        )
+      )
+    }
+
     setJournalText('')
     setShowJournal(false)
   }
@@ -675,16 +704,49 @@ function PostCard({ post, delay, onClick }) {
 
 function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
   const [confirmDelete, setConfirmDelete] = useState(null)
-  const timeAgo = d => { const m = Math.floor((Date.now() - new Date(d)) / 60000); if (m < 1) return 'just now'; if (m < 60) return `${m}m ago`; if (m < 1440) return `${Math.floor(m / 60)}h ago`; return `${Math.floor(m / 1440)}d ago` }
 
-  // Group by post for expresser chats
+  // Date bucket label
+  function dateBucket(isoStr) {
+    const d = new Date(isoStr)
+    const now = new Date()
+    const diffDays = Math.floor((now - d) / 86400000)
+    if (diffDays === 0) return 'Today'
+    if (diffDays === 1) return 'Yesterday'
+    if (diffDays < 7)  return 'This week'
+    if (diffDays < 30) return 'This month'
+    return 'Earlier'
+  }
+
+  const BUCKET_ORDER = ['Today', 'Yesterday', 'This week', 'This month', 'Earlier']
+
+  // Flatten all chats into a unified list with role context
+  // For expresser chats: group sessions by post, show one row per post
   const myExpressions = chats.filter(c => c.expresser_id === userId)
   const myListening   = chats.filter(c => c.listener_id === userId)
 
-  const grouped = myExpressions.reduce((acc, chat) => {
-    const key = chat.posts?.id ?? chat.id
-    if (!acc[key]) acc[key] = { post: chat.posts, sessions: [], earliest: chat.created_at }
-    acc[key].sessions.push(chat)
+  // Group expressions by post
+  const expressionGroups = Object.values(
+    myExpressions.reduce((acc, chat) => {
+      const key = chat.posts?.id ?? chat.id
+      if (!acc[key]) acc[key] = { post: chat.posts, sessions: [], date: chat.created_at, id: key }
+      acc[key].sessions.push(chat)
+      // Use most recent session date for the group
+      if (new Date(chat.created_at) > new Date(acc[key].date)) acc[key].date = chat.created_at
+      return acc
+    }, {})
+  )
+
+  // Build unified rows: { type, date, data }
+  const rows = [
+    ...expressionGroups.map(g => ({ type: 'expression', date: g.date, data: g })),
+    ...myListening.map(c => ({ type: 'listening', date: c.created_at, data: c })),
+  ].sort((a, b) => new Date(b.date) - new Date(a.date))
+
+  // Group by date bucket
+  const buckets = rows.reduce((acc, row) => {
+    const b = dateBucket(row.date)
+    if (!acc[b]) acc[b] = []
+    acc[b].push(row)
     return acc
   }, {})
 
@@ -696,94 +758,119 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
           Back
         </button>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 400, letterSpacing: '-0.01em', marginBottom: 6, color: 'var(--text)' }}>Your conversations</h2>
-        <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.5)' }}>Every conversation here meant something.</p>
+        <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.5)' }}>{rows.length} total · grouped by date</p>
       </div>
 
-      {chats.length === 0 ? (
+      {rows.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '48px 24px', color: 'rgba(240,239,232,0.4)' }}>
           <p style={{ fontSize: 32, marginBottom: 16 }}>◎</p>
           <p style={{ fontSize: 15 }}>No conversations yet.</p>
           <p style={{ fontSize: 13, marginTop: 8 }}>When you connect with someone, it'll show up here.</p>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20, paddingBottom: 48 }}>
-
-          {/* Expressions — grouped by post */}
-          {Object.keys(grouped).length > 0 && (
-            <div>
-              <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent)', marginBottom: 10 }}>Things you expressed</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {Object.values(grouped).map(({ post, sessions }) => {
-                  const listenerCount = sessions.length
-                  const preview = post?.content?.slice(0, 80) ?? ''
-                  const hasActive = sessions.some(s => s.status === 'active')
-                  return (
-                    <div key={post?.id ?? 'unknown'} style={{ padding: 16, background: 'var(--bg2)', border: `1px solid ${hasActive ? 'rgba(93,202,165,0.3)' : 'var(--border)'}`, borderRadius: 'var(--radius)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                          {hasActive && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, background: 'rgba(93,202,165,0.15)', color: 'var(--teal)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Active</span>}
-                          <span style={{ fontSize: 12, color: 'rgba(240,239,232,0.5)' }}>💬 {listenerCount} {listenerCount === 1 ? 'listener' : 'listeners'}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 28, paddingBottom: 48 }}>
+          {BUCKET_ORDER.filter(b => buckets[b]).map(bucket => (
+            <div key={bucket}>
+              {/* Date header */}
+              <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(240,239,232,0.35)', marginBottom: 10 }}>
+                {bucket}
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {buckets[bucket].map(row => {
+                  if (row.type === 'expression') {
+                    // Expression group card
+                    const { post, sessions, id } = row.data
+                    const hasActive = sessions.some(s => s.status === 'active')
+                    const preview = post?.content?.slice(0, 100) ?? ''
+                    const listenerCount = sessions.length
+                    return (
+                      <div key={`exp-${id}`} style={{ padding: '14px 16px', background: 'var(--bg2)', border: `1px solid ${hasActive ? 'rgba(93,202,165,0.25)' : 'var(--border)'}`, borderRadius: 'var(--radius)' }}>
+                        {/* Header row */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--accent)' }}>You expressed</span>
+                            {hasActive && <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, background: 'rgba(93,202,165,0.15)', color: 'var(--teal)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Live</span>}
+                          </div>
+                          {post?.emotion_tag && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: 'var(--bg3)', color: 'rgba(240,239,232,0.5)' }}>{post.emotion_tag}</span>}
                         </div>
-                        {post?.emotion_tag && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 8, background: 'var(--bg3)', color: 'var(--accent)' }}>{post.emotion_tag}</span>}
-                      </div>
-                      <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.7)', lineHeight: 1.6, marginBottom: 12 }}>"{preview}{preview.length === 80 ? '...' : ''}"</p>
-                      {/* Individual listener chats */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {sessions.map(session => {
-                          const oName = session.posts?.is_anonymous ? 'Anonymous' : (session.otherProfile?.full_name?.split(' ')[0] ?? 'Listener')
-                          const oAvatar = session.posts?.is_anonymous ? null : session.otherProfile?.avatar_url
-                          return (
-                            <div key={session.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'var(--bg3)', borderRadius: 8 }}>
-                              <Avatar url={oAvatar} name={oName} size={24} />
-                              <span style={{ fontSize: 13, color: 'rgba(240,239,232,0.7)', flex: 1 }}>{oName}</span>
-                              <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 8, background: session.status === 'active' ? 'rgba(93,202,165,0.15)' : 'rgba(136,135,128,0.15)', color: session.status === 'active' ? 'var(--teal)' : 'rgba(240,239,232,0.4)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>{session.status === 'active' ? 'Ongoing' : 'Ended'}</span>
-                              <button onClick={() => onOpen(session)} style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Open</button>
-                              <button onClick={() => setConfirmDelete(session.id)} style={{ color: 'rgba(240,239,232,0.3)', fontSize: 16, cursor: 'pointer', background: 'none', border: 'none', lineHeight: 1 }}
-                                onMouseEnter={e => e.currentTarget.style.color = 'var(--coral)'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(240,239,232,0.3)'}>×</button>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
 
-          {/* Listening sessions */}
-          {myListening.length > 0 && (
-            <div>
-              <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--teal)', marginBottom: 10 }}>People you listened to</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {myListening.map(chat => {
+                        {/* Post preview */}
+                        <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.75)', lineHeight: 1.6, marginBottom: 10 }}>
+                          "{preview}{preview.length === 100 ? '...' : ''}"
+                        </p>
+
+                        {/* Listener sessions — each as a compact row */}
+                        {sessions.length === 1 ? (
+                          // Single listener: just an "Open" button
+                          <button onClick={() => onOpen(sessions[0])} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                            <span style={{ fontSize: 12, color: 'rgba(240,239,232,0.5)' }}>💬 1 listener ·</span>
+                            <span style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'underline' }}>Open chat</span>
+                            <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, background: sessions[0].status === 'active' ? 'rgba(93,202,165,0.15)' : 'rgba(136,135,128,0.15)', color: sessions[0].status === 'active' ? 'var(--teal)' : 'rgba(240,239,232,0.4)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                              {sessions[0].status === 'active' ? 'Ongoing' : 'Ended'}
+                            </span>
+                            <button onClick={e => { e.stopPropagation(); setConfirmDelete(sessions[0].id) }} style={{ marginLeft: 'auto', color: 'rgba(240,239,232,0.25)', fontSize: 16, cursor: 'pointer', background: 'none', border: 'none', lineHeight: 1 }}
+                              onMouseEnter={e => e.currentTarget.style.color = 'var(--coral)'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(240,239,232,0.25)'}>×</button>
+                          </button>
+                        ) : (
+                          // Multiple listeners: expandable list
+                          <div>
+                            <p style={{ fontSize: 12, color: 'rgba(240,239,232,0.5)', marginBottom: 6 }}>💬 {listenerCount} listeners responded</p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              {sessions.map((session, idx) => {
+                                const oName = session.otherProfile?.full_name?.split(' ')[0] ?? `Listener ${idx + 1}`
+                                const oAvatar = session.otherProfile?.avatar_url
+                                return (
+                                  <div key={session.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'var(--bg3)', borderRadius: 8 }}>
+                                    <Avatar url={oAvatar} name={oName} size={20} />
+                                    <span style={{ fontSize: 13, color: 'rgba(240,239,232,0.7)', flex: 1 }}>{oName}</span>
+                                    <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, background: session.status === 'active' ? 'rgba(93,202,165,0.15)' : 'rgba(136,135,128,0.15)', color: session.status === 'active' ? 'var(--teal)' : 'rgba(240,239,232,0.4)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                                      {session.status === 'active' ? 'Live' : 'Ended'}
+                                    </span>
+                                    <button onClick={() => onOpen(session)} style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Open</button>
+                                    <button onClick={() => setConfirmDelete(session.id)} style={{ color: 'rgba(240,239,232,0.25)', fontSize: 14, cursor: 'pointer', background: 'none', border: 'none', lineHeight: 1 }}
+                                      onMouseEnter={e => e.currentTarget.style.color = 'var(--coral)'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(240,239,232,0.25)'}>×</button>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  }
+
+                  // Listening card
+                  const chat = row.data
                   const isOngoing = chat.status === 'active'
-                  const preview = chat.posts?.content?.slice(0, 80) ?? ''
+                  const preview = chat.posts?.content?.slice(0, 100) ?? ''
                   const isAnon = chat.posts?.is_anonymous
                   const otherName = isAnon ? 'Anonymous' : (chat.otherProfile?.full_name?.split(' ')[0] ?? 'Someone')
                   const otherAvatar = isAnon ? null : chat.otherProfile?.avatar_url
+
                   return (
-                    <div key={chat.id} style={{ padding: 16, background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                    <div key={`listen-${chat.id}`} style={{ padding: '14px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                       <button onClick={() => onOpen(chat)} style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <Avatar url={otherAvatar} name={otherName} size={24} />
-                            <span style={{ fontSize: 13, color: 'rgba(240,239,232,0.75)' }}>{otherName}</span>
-                            <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 600, background: isOngoing ? 'rgba(93,202,165,0.15)' : 'rgba(136,135,128,0.15)', color: isOngoing ? 'var(--teal)' : 'rgba(240,239,232,0.4)', border: `1px solid ${isOngoing ? 'rgba(93,202,165,0.3)' : 'var(--border)'}`, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{isOngoing ? 'Ongoing' : 'Ended'}</span>
+                            <span style={{ fontSize: 13, color: 'rgba(240,239,232,0.8)', fontWeight: 500 }}>{otherName}</span>
+                            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--teal)' }}>You listened</span>
+                            <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, fontWeight: 600, background: isOngoing ? 'rgba(93,202,165,0.15)' : 'rgba(136,135,128,0.15)', color: isOngoing ? 'var(--teal)' : 'rgba(240,239,232,0.4)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                              {isOngoing ? 'Live' : 'Ended'}
+                            </span>
                           </div>
-                          <span style={{ fontSize: 11, color: 'rgba(240,239,232,0.4)' }}>{timeAgo(chat.created_at)}</span>
                         </div>
-                        <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.7)', lineHeight: 1.6 }}>"{preview}{preview.length === 80 ? '...' : ''}"</p>
-                        {chat.posts?.emotion_tag && <span style={{ display: 'inline-block', marginTop: 8, fontSize: 11, padding: '3px 8px', borderRadius: 8, background: 'var(--bg3)', color: 'var(--teal)' }}>{chat.posts.emotion_tag}</span>}
+                        <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.7)', lineHeight: 1.6 }}>"{preview}{preview.length === 100 ? '...' : ''}"</p>
+                        {chat.posts?.emotion_tag && <span style={{ display: 'inline-block', marginTop: 6, fontSize: 11, padding: '2px 8px', borderRadius: 6, background: 'var(--bg3)', color: 'var(--teal)' }}>{chat.posts.emotion_tag}</span>}
                       </button>
-                      <button onClick={() => setConfirmDelete(chat.id)} style={{ color: 'rgba(240,239,232,0.3)', fontSize: 20, cursor: 'pointer', flexShrink: 0, padding: 4, background: 'none', border: 'none', lineHeight: 1 }}
-                        onMouseEnter={e => e.currentTarget.style.color = 'var(--coral)'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(240,239,232,0.3)'}>×</button>
+                      <button onClick={() => setConfirmDelete(chat.id)} style={{ color: 'rgba(240,239,232,0.25)', fontSize: 20, cursor: 'pointer', flexShrink: 0, padding: 4, background: 'none', border: 'none', lineHeight: 1 }}
+                        onMouseEnter={e => e.currentTarget.style.color = 'var(--coral)'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(240,239,232,0.25)'}>×</button>
                     </div>
                   )
                 })}
               </div>
             </div>
-          )}
+          ))}
         </div>
       )}
       {confirmDelete && <Modal title="Delete this conversation?" body="This can't be undone. The messages will be gone permanently." primaryLabel="Yes, delete it" primaryAction={() => { onDelete(confirmDelete); setConfirmDelete(null) }} secondaryLabel="Keep it" secondaryAction={() => setConfirmDelete(null)} danger />}
