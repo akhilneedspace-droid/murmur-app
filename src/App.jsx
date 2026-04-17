@@ -11,13 +11,30 @@ import ResetPassword from './pages/ResetPassword'
 import Dashboard from './pages/Dashboard'
 import AccountPage from './pages/AccountPage'
 import AdminPage from './pages/AdminPage'
+import TermsPage from './pages/TermsPage'
+import PrivacyPage from './pages/PrivacyPage'
+
+function ProtectedRoute({ children }) {
+  const { user } = useAuth()
+  if (user === undefined) return null // still loading
+  if (!user) return <Navigate to="/" replace />
+  return children
+}
+
+function PublicOnlyRoute({ children }) {
+  const { user } = useAuth()
+  if (user === undefined) return null // still loading
+  if (user) return <Navigate to="/dashboard" replace />
+  return children
+}
 
 function AppRoutes() {
   const { user } = useAuth()
 
+  // Show loading spinner while auth state is resolving
   if (user === undefined) {
     return (
-      <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
         <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', display: 'inline-block', animation: 'pulse 1.2s ease-in-out infinite' }} />
       </div>
     )
@@ -26,17 +43,46 @@ function AppRoutes() {
   return (
     <div className="noise">
       <Routes>
-        <Route path="/"                element={user ? <Navigate to="/dashboard" replace /> : <Welcome />} />
-        <Route path="/quiz"            element={user ? <Navigate to="/dashboard" replace /> : <Quiz />} />
-        <Route path="/quiz/result"     element={user ? <Navigate to="/dashboard" replace /> : <QuizResult />} />
-        <Route path="/signup"          element={user ? <Navigate to="/dashboard" replace /> : <Signup />} />
-        <Route path="/login"           element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
-        <Route path="/forgot-password" element={user ? <Navigate to="/dashboard" replace /> : <ForgotPassword />} />
-        <Route path="/reset-password"  element={<ResetPassword />} />
-        <Route path="/dashboard"       element={user ? <Dashboard /> : <Navigate to="/" replace />} />
-        <Route path="/account"         element={user ? <AccountPage /> : <Navigate to="/" replace />} />
-        <Route path="/admin"           element={user ? <AdminPage /> : <Navigate to="/" replace />} />
-        <Route path="*"                element={<Navigate to="/" replace />} />
+        {/* Public routes — redirect to dashboard if already logged in */}
+        <Route path="/" element={
+          <PublicOnlyRoute><Welcome /></PublicOnlyRoute>
+        } />
+        <Route path="/quiz" element={
+          <PublicOnlyRoute><Quiz /></PublicOnlyRoute>
+        } />
+        <Route path="/quiz/result" element={
+          <PublicOnlyRoute><QuizResult /></PublicOnlyRoute>
+        } />
+        <Route path="/signup" element={
+          <PublicOnlyRoute><Signup /></PublicOnlyRoute>
+        } />
+        <Route path="/login" element={
+          <PublicOnlyRoute><Login /></PublicOnlyRoute>
+        } />
+        <Route path="/forgot-password" element={
+          <PublicOnlyRoute><ForgotPassword /></PublicOnlyRoute>
+        } />
+
+        {/* Reset password — accessible even without auth (token in URL) */}
+        <Route path="/reset-password" element={<ResetPassword />} />
+
+        {/* Legal pages — always accessible, no auth required */}
+        <Route path="/terms" element={<TermsPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
+
+        {/* Protected routes — redirect to home if not logged in */}
+        <Route path="/dashboard" element={
+          <ProtectedRoute><Dashboard /></ProtectedRoute>
+        } />
+        <Route path="/account" element={
+          <ProtectedRoute><AccountPage /></ProtectedRoute>
+        } />
+        <Route path="/admin" element={
+          <ProtectedRoute><AdminPage /></ProtectedRoute>
+        } />
+
+        {/* Catch-all */}
+        <Route path="*" element={<Navigate to={user ? '/dashboard' : '/'} replace />} />
       </Routes>
     </div>
   )
