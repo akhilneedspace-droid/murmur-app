@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 
 // ── Replace with your actual email ────────────────────────────
-const ADMIN_EMAILS = ['akhilneedspace@gmail.com']
+const ADMIN_EMAILS = ['akhilprasad909@gmail.com']
 
 const RATING_LABELS = {
   1: { emoji: '😔', label: 'Not great' },
