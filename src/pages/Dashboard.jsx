@@ -906,6 +906,7 @@ function ChatView({ sessionId, isExpresser, isSeedSession, isAISession, post, my
   const [showRating, setShowRating] = useState(false)
   const [otherProfile, setOtherProfile] = useState(preloadedOtherProfile ?? null)
   const [hasInteracted, setHasInteracted] = useState(false)
+  const [sessionClosed, setSessionClosed] = useState(false)
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
   const typingChannel = useRef(null)
@@ -940,6 +941,10 @@ function ChatView({ sessionId, isExpresser, isSeedSession, isAISession, post, my
       msgs.forEach(m => seenIds.current.add(m.id))
       setMessages(msgs); setHasInteracted(msgs.some(m => m.sender_id === currentUserId)); setLoading(false); return
     }
+    // Also fetch session status to know if it's closed (disable input if so)
+    supabase.from('sessions').select('status').eq('id', sessionId).single().then(({ data: s }) => {
+      if (s?.status === 'closed') setSessionClosed(true)
+    })
     supabase.from('messages').select('*').eq('session_id', sessionId).order('created_at', { ascending: true })
       .then(({ data }) => {
         const msgs = data || []
@@ -1134,17 +1139,23 @@ function ChatView({ sessionId, isExpresser, isSeedSession, isAISession, post, my
           <div ref={bottomRef} />
         </div>
 
-        {/* Input */}
-        <div style={{ padding: '12px 16px 36px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'flex-end', flexShrink: 0, position: 'relative' }}>
-          {showEmoji && <EmojiPicker onSelect={insertEmoji} onClose={() => setShowEmoji(false)} />}
-          <button onClick={() => setShowEmoji(s => !s)} style={{ width: 40, height: 40, borderRadius: '50%', background: showEmoji ? 'var(--accent-dim)' : 'transparent', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, fontSize: 18 }}>🙂</button>
-          <textarea ref={inputRef} value={input} onChange={e => { setInput(e.target.value); if (!isAIChat) broadcastTyping() }} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }} placeholder={isExpresser ? 'Say what you need to say...' : 'Say something kind...'} rows={1}
-            style={{ flex: 1, padding: '12px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 20, fontSize: 15, color: 'var(--text)', resize: 'none', lineHeight: 1.5, transition: 'border-color var(--transition)' }}
-            onFocus={e => e.target.style.borderColor = 'var(--accent)'} onBlur={e => e.target.style.borderColor = 'var(--border)'} />
-          <button onClick={send} disabled={!input.trim() || aiThinking} style={{ width: 44, height: 44, borderRadius: '50%', background: input.trim() ? 'var(--accent)' : 'var(--bg3)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background var(--transition)', flexShrink: 0, cursor: input.trim() ? 'pointer' : 'default' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
-          </button>
-        </div>
+        {/* Input — disabled if session is closed */}
+        {sessionClosed ? (
+          <div style={{ padding: '16px 24px 32px', borderTop: '1px solid var(--border)', textAlign: 'center' }}>
+            <p style={{ fontSize: 13, color: 'rgba(240,239,232,0.35)' }}>This conversation has ended.</p>
+          </div>
+        ) : (
+          <div style={{ padding: '12px 16px 36px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'flex-end', flexShrink: 0, position: 'relative' }}>
+            {showEmoji && <EmojiPicker onSelect={insertEmoji} onClose={() => setShowEmoji(false)} />}
+            <button onClick={() => setShowEmoji(s => !s)} style={{ width: 40, height: 40, borderRadius: '50%', background: showEmoji ? 'var(--accent-dim)' : 'transparent', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, fontSize: 18 }}>🙂</button>
+            <textarea ref={inputRef} value={input} onChange={e => { setInput(e.target.value); if (!isAIChat) broadcastTyping() }} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }} placeholder={isExpresser ? 'Say what you need to say...' : 'Say something kind...'} rows={1}
+              style={{ flex: 1, padding: '12px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 20, fontSize: 15, color: 'var(--text)', resize: 'none', lineHeight: 1.5, transition: 'border-color var(--transition)' }}
+              onFocus={e => e.target.style.borderColor = 'var(--accent)'} onBlur={e => e.target.style.borderColor = 'var(--border)'} />
+            <button onClick={send} disabled={!input.trim() || aiThinking} style={{ width: 44, height: 44, borderRadius: '50%', background: input.trim() ? 'var(--accent)' : 'var(--bg3)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background var(--transition)', flexShrink: 0, cursor: input.trim() ? 'pointer' : 'default' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+            </button>
+          </div>
+        )}
       </div>
     </>
   )

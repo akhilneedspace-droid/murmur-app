@@ -15,7 +15,6 @@ export default function Signup() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [otp, setOtp] = useState('')
-  const [agreedToTerms, setAgreedToTerms] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [visible] = useState(true)
@@ -28,7 +27,6 @@ export default function Signup() {
     if (!fullName.trim()) { setError('Please enter your full name.'); return }
     if (!email.includes('@')) { setError('Please enter a valid email address.'); return }
     if (password.length < 8) { setError('Password must be at least 8 characters.'); return }
-    if (!agreedToTerms) { setError('Please agree to the Terms of Service and Privacy Policy to continue.'); return }
 
     setLoading(true)
     try {
@@ -88,6 +86,17 @@ export default function Signup() {
           setError(verifyError.message)
         }
         return
+      }
+      // Upsert profile after verified — this works because user is now confirmed
+      const { data: { user: confirmedUser } } = await supabase.auth.getUser()
+      if (confirmedUser) {
+        await supabase.from('profiles').upsert({
+          id: confirmedUser.id,
+          full_name: fullName.trim(),
+          email: email.trim().toLowerCase(),
+          phone: phone.trim() || null,
+          identity: identity ?? null,
+        }, { onConflict: 'id' })
       }
       setStep('done')
       setTimeout(() => navigate('/dashboard'), 1500)
@@ -253,38 +262,22 @@ export default function Signup() {
           ))}
         </div>
 
-        {/* Terms agreement */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 16px', background: 'var(--bg2)', border: `1px solid ${agreedToTerms ? 'rgba(139,124,246,0.3)' : 'var(--border)'}`, borderRadius: 'var(--radius-sm)', cursor: 'pointer', transition: 'border-color var(--transition)' }}
-          onClick={() => setAgreedToTerms(a => !a)}>
-          <div style={{ width: 20, height: 20, borderRadius: 6, border: `2px solid ${agreedToTerms ? 'var(--accent)' : 'var(--border)'}`, background: agreedToTerms ? 'var(--accent)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1, transition: 'all var(--transition)' }}>
-            {agreedToTerms && (
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-            )}
-          </div>
-          <p style={{ fontSize: 13, color: 'rgba(240,239,232,0.65)', lineHeight: 1.6 }}>
-            I agree to Murmur's{' '}
-            <span onClick={e => { e.stopPropagation(); window.open('/terms', '_blank') }}
-              style={{ color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer' }}>
-              Terms of Service
-            </span>
-            {' '}and{' '}
-            <span onClick={e => { e.stopPropagation(); window.open('/privacy', '_blank') }}
-              style={{ color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer' }}>
-              Privacy Policy
-            </span>
-            . I understand Murmur is a peer support platform, not a mental health service.
-          </p>
-        </div>
-
         {error && (
           <p style={{ fontSize: 14, color: 'var(--coral)', textAlign: 'center', lineHeight: 1.5 }}>{error}</p>
         )}
 
-        <button type="submit" className="btn-primary" disabled={loading || !agreedToTerms}>
+        <button type="submit" className="btn-primary" disabled={loading}>
           {loading ? 'Creating your account...' : 'Create account'}
         </button>
+
+        {/* Terms statement — no checkbox needed */}
+        <p style={{ textAlign: 'center', fontSize: 12, color: 'rgba(240,239,232,0.38)', lineHeight: 1.7 }}>
+          By creating your account you agree to our{' '}
+          <span onClick={() => window.open('/terms', '_blank')} style={{ color: 'rgba(240,239,232,0.6)', textDecoration: 'underline', cursor: 'pointer' }}>Terms of Service</span>
+          {' '}and{' '}
+          <span onClick={() => window.open('/privacy', '_blank')} style={{ color: 'rgba(240,239,232,0.6)', textDecoration: 'underline', cursor: 'pointer' }}>Privacy Policy</span>.
+          Murmur is peer support — not a mental health service.
+        </p>
 
         <p style={{ textAlign: 'center', fontSize: 13, color: 'rgba(240,239,232,0.5)' }}>
           Already have an account?{' '}
