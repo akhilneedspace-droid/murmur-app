@@ -382,7 +382,7 @@ function ExpresserView({ user, myProfile, onBack, onSessionStart }) {
   const [showJournal, setShowJournal] = useState(false)
   const [rateLimited, setRateLimited] = useState(false)
 
-  const ACK_DURATION_MS = 10000
+  const ACK_DURATION_MS = 6000
   const AI_WAIT_SECS    = 10
   const DAILY_POST_LIMIT = 3
 
