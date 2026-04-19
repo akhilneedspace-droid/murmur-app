@@ -67,6 +67,8 @@ const SEED_POSTS = [
 ]
 
 const seedChatStore = {}
+// Queued journal messages waiting to be sent when chat opens
+const pendingJournalMessages = {} // postId -> array of strings
 const EMOJI_GROUPS = [
   ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','💔','💗'],
   ['😊','😢','😔','😰','😤','😌','🥺','😶','🤗','😓'],
@@ -131,6 +133,7 @@ export default function Dashboard() {
   const [visible, setVisible] = useState(false)
   const [activeExpresserSessions, setActiveExpresserSessions] = useState([]) // multi-listener: array
   const [currentListenerSession, setCurrentListenerSession] = useState(null) // which listener expresser is chatting with
+  const currentListenerSessionRef = useRef(null) // ref to avoid stale closure in realtime listener
   const [newListenerNotif, setNewListenerNotif] = useState(null) // notification when new listener joins
   const [listenerCount, setListenerCount] = useState(0)
   const [todayListenerCount, setTodayListenerCount] = useState(0)
@@ -206,16 +209,20 @@ export default function Dashboard() {
           setActiveExpresserSessions(prev => {
             const exists = prev.find(s => s.id === newSession.id)
             if (exists) return prev
-            // If already in a chat, show notification instead of auto-switching
-            if (currentListenerSession || prev.length > 0) {
+            const updated = [...prev, newSession]
+            // If this is NOT the first session, show notification
+            if (prev.length > 0) {
               setNewListenerNotif(newSession)
             }
-            return [...prev, newSession]
+            return updated
           })
         })
       .subscribe()
     return () => supabase.removeChannel(ch)
-  }, [user, currentListenerSession])
+  }, [user]) // intentionally no currentListenerSession dep — using ref instead
+
+  // Keep ref in sync with state (avoids stale closure in realtime listener)
+  useEffect(() => { currentListenerSessionRef.current = currentListenerSession }, [currentListenerSession])
 
   // Session timeout: close inactive sessions every 5 minutes
   useEffect(() => {
@@ -376,7 +383,7 @@ function ExpresserView({ user, myProfile, onBack, onSessionStart }) {
   const [rateLimited, setRateLimited] = useState(false)
 
   const ACK_DURATION_MS = 10000
-  const AI_WAIT_SECS    = 5
+  const AI_WAIT_SECS    = 10
   const DAILY_POST_LIMIT = 3
 
   useEffect(() => { setTimeout(() => setVisible(true), 80) }, [])
@@ -399,16 +406,12 @@ function ExpresserView({ user, myProfile, onBack, onSessionStart }) {
     return () => clearInterval(iv)
   }, [phase, aiJoining])
 
-  useEffect(() => {
-    if (!postId) return
-    const ch = supabase.channel(`post-${postId}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sessions', filter: `post_id=eq.${postId}` }, (p) => onSessionStart(p.new)).subscribe()
-    return () => supabase.removeChannel(ch)
-  }, [postId])
+  // Session joins handled by Dashboard realtime listener
 
   async function triggerAI() {
     setAiJoining(true)
-    const { data } = await supabase.from('sessions').insert({ post_id: postId, expresser_id: user.id, listener_id: null, status: 'active', is_ai: true }).select().single()
-    if (data) onSessionStart({ ...data, is_ai: true })
+    // Just insert — Dashboard realtime listener handles opening the chat
+    await supabase.from('sessions').insert({ post_id: postId, expresser_id: user.id, listener_id: null, status: 'active', is_ai: true })
   }
 
   async function handleSubmit() {
@@ -425,24 +428,27 @@ function ExpresserView({ user, myProfile, onBack, onSessionStart }) {
     if (!journalText.trim() || !postId) return
     const addition = journalText.trim()
     const newContent = postContent + '\n\n' + addition
+
     // Update the post content in the database
     await supabase.from('posts').update({ content: newContent }).eq('id', postId)
     setPostContent(newContent)
 
-    // Also send it as a message in all active sessions for this post
-    // so listeners already in chat see the addition
+    const messageText = `📝 I wanted to add something:\n${addition}`
+
+    // Try to send immediately to any already-active sessions
     const { data: activeSessions } = await supabase
-      .from('sessions')
-      .select('id')
-      .eq('post_id', postId)
-      .eq('status', 'active')
+      .from('sessions').select('id').eq('post_id', postId).eq('status', 'active')
+
     if (activeSessions?.length) {
-      const messageText = `📝 I wanted to add something: ${addition}`
       await Promise.all(
         activeSessions.map(s =>
           supabase.from('messages').insert({ session_id: s.id, sender_id: user.id, content: messageText })
         )
       )
+    } else {
+      // No active session yet — queue the message so ChatView sends it on open
+      if (!pendingJournalMessages[postId]) pendingJournalMessages[postId] = []
+      pendingJournalMessages[postId].push({ text: messageText, userId: user.id })
     }
 
     setJournalText('')
@@ -946,10 +952,25 @@ function ChatView({ sessionId, isExpresser, isSeedSession, isAISession, post, my
       if (s?.status === 'closed') setSessionClosed(true)
     })
     supabase.from('messages').select('*').eq('session_id', sessionId).order('created_at', { ascending: true })
-      .then(({ data }) => {
+      .then(async ({ data }) => {
         const msgs = data || []
         msgs.forEach(m => seenIds.current.add(m.id))
         setMessages(msgs); setHasInteracted(msgs.some(m => m.sender_id === currentUserId)); setLoading(false)
+
+        // Send any queued journal messages (written during wait screen before session existed)
+        if (isExpresser && post?.id && pendingJournalMessages[post.id]?.length) {
+          const queued = pendingJournalMessages[post.id]
+          delete pendingJournalMessages[post.id]
+          for (const item of queued) {
+            const { data: inserted } = await supabase.from('messages')
+              .insert({ session_id: sessionId, sender_id: item.userId, content: item.text })
+              .select().single()
+            if (inserted) {
+              seenIds.current.add(inserted.id)
+              setMessages(m => [...m, inserted])
+            }
+          }
+        }
       })
   }, [sessionId])
 
