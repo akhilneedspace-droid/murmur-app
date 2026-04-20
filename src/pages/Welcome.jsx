@@ -32,8 +32,7 @@ export default function Welcome() {
             <span style={{ color: 'var(--accent)', fontStyle: 'italic' }}>not alone.</span>
           </h1>
           <p style={{ fontSize: 17, color: 'var(--text-secondary)', lineHeight: 1.7, maxWidth: 320 }}>
-            A warm, safe space to say the things you've been holding in. <br />
-            <span style={{ color: 'var(--accent)', fontStyle: 'italic' }}>Be heard, without judgment. </span>
+            A warm, safe space to say the things you've been holding in.Be heard, without judgment.
           </p>
         </div>
       </div>
