@@ -15,7 +15,7 @@ const QUESTIONS = [
   {
     q: "When a friend is upset, your instinct is to...",
     options: [
-      "Just listen — no fixing",
+      "Just listen, no fixing",
       "Help them find a solution",
       "I want to help but I freeze up"
     ]
@@ -23,7 +23,7 @@ const QUESTIONS = [
   {
     q: "Could you open up to a complete stranger?",
     options: [
-      "Yes — easier than people I know",
+      "Yes, easier than people I know",
       "Only if I was anonymous",
       "Not really, trust takes time"
     ]
@@ -41,7 +41,7 @@ const QUESTIONS = [
     options: [
       "Heavy. A lot is going on.",
       "Okay, just needed somewhere to land.",
-      "Good — ready to show up for others.",
+      "Good, ready to show up for others.",
       "Somewhere in between, honestly."
     ]
   }
