@@ -411,7 +411,7 @@ function ExpresserView({ user, myProfile, onBack, onBrowseListeners, onSessionSt
 
   const ACK_DURATION_MS = 5000
   const AI_WAIT_SECS    = 10
-  const DAILY_POST_LIMIT = 3
+  const DAILY_POST_LIMIT = 10
 
   useEffect(() => { setTimeout(() => setVisible(true), 80) }, [])
 
