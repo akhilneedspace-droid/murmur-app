@@ -8,7 +8,7 @@ import { getAIResponse } from '../lib/ai'
 // ── Greeting ───────────────────────────────────────────────────
 function getGreeting() {
   const h = new Date().getHours()
-  if (h >= 23 || h < 4)  return 'Still up? All okay'
+  if (h >= 23 || h < 4)  return 'Still up? All oka'
   if (h >= 4  && h < 12) return 'Good morning'
   if (h >= 12 && h < 16) return 'Good afternoon'
   if (h >= 16 && h < 18) return 'Good evening'
@@ -144,6 +144,7 @@ export default function Dashboard() {
   const currentListenerSessionRef = useRef(null) // ref to avoid stale closure in realtime listener
   const [newListenerNotif, setNewListenerNotif] = useState(null) // notification when new listener joins
   const [listenerCount, setListenerCount] = useState(0)
+  const [listenerJoined, setListenerJoined] = useState(false) //aichatgpt
   const [todayListenerCount, setTodayListenerCount] = useState(0)
   const [pastChats, setPastChats] = useState([])
   const [selectedChat, setSelectedChat] = useState(null)
@@ -217,6 +218,7 @@ export default function Dashboard() {
           // Fetch listener's name for the FAB
           let listenerName = 'Listener'
           if (newSession.listener_id) {
+            setListenerJoined(true)//aichatgpt
             const { data: p } = await supabase.from('profiles').select('full_name').eq('id', newSession.listener_id).single()
             if (p?.full_name) listenerName = p.full_name.split(' ')[0]
           }
@@ -293,7 +295,9 @@ export default function Dashboard() {
       allListenerSessions={isExp ? activeExpresserSessions : undefined}
 onSwitchListener={isExp ? (session) => { 
   setSelectedChat(session)
-} : undefined}      onBack={() => { setSelectedChat(null); setView('chats') }}
+} : undefined}      //chatgpt
+
+onBack={() => { setSelectedChat(null); setView('chats') }}
       onEnd={() => { setSelectedChat(null); setView('chats'); fetchPastChats() }}
       
     />
@@ -676,7 +680,7 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
 
   function handleSwitchListener(session) {
   setActiveSession(session)
-}
+}//chatgpt
 }
 
 function PostCard({ post, delay, onClick }) {
@@ -899,7 +903,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
   const [sessionId, setSessionId] = useState(initialSessionId) // may be null for pending listener sessions
   useEffect(() => {
   setSessionId(initialSessionId)
-}, [initialSessionId])
+}, [initialSessionId]) // chatgpt
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
@@ -1050,7 +1054,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
     if (isAIChat) {
       const pid = sessionId.replace('seed-', ''); seedChatStore[pid] = updated; setAiThinking(true)
       const history = updated.map(m => ({ role: m.sender_id === currentUserId ? 'user' : 'assistant', content: m.content }))
-      const aiText = await getAIResponse(history, 'expresser', post?.content ?? '')
+      const aiText = await getAIResponse(history, 'listener', post?.content ?? '') //aichaTGPT express to listener
       setAiThinking(false); setOtherTyping(true)
       await new Promise(r => setTimeout(r, TYPING_REVEAL_MS))
       setOtherTyping(false)
@@ -1069,6 +1073,55 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       activeSessionId = newSession.id
       setSessionId(activeSessionId)
     }
+
+    //aichatgpt
+    useEffect(() => {
+  if (!sessionId || isAIChat) return
+
+  // only run if YOU are the expresser
+  if (!isExp) return
+
+  setListenerJoined(false)
+
+  const timer = setTimeout(async () => {
+    if (listenerJoined) return
+
+    console.log("No listener joined — triggering AI")
+
+    setAiThinking(true)
+
+    const history = messages.map(m => ({
+      role: m.sender_id === currentUserId ? 'user' : 'assistant',
+      content: m.content
+    }))
+
+    const aiText = await getAIResponse(
+      history,
+      'listener',   // 👈 IMPORTANT: AI is listener now
+      post?.content ?? ''
+    )
+
+    setAiThinking(false)
+    setOtherTyping(true)
+
+    await new Promise(r => setTimeout(r, TYPING_REVEAL_MS))
+
+    setOtherTyping(false)
+
+    const aiMsg = {
+      id: `ai-${Date.now()}`,
+      sender_id: 'other',
+      content: aiText,
+      created_at: new Date().toISOString()
+    }
+
+    setMessages(prev => [...prev, aiMsg])
+
+  }, 10000) // 10 seconds
+
+  return () => clearTimeout(timer)
+
+}, [sessionId])
 
     const { data: inserted, error } = await supabase.from('messages').insert({ session_id: activeSessionId, sender_id: currentUserId, content }).select().single()
     if (error) { setMessages(m => m.filter(msg => msg.id !== tempId)); return }
