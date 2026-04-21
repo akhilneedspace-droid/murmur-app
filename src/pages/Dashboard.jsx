@@ -13,7 +13,7 @@ function getGreeting() {
   if (h >= 12 && h < 16) return 'Good afternoon'
   if (h >= 16 && h < 18) return 'Good evening'
   if (h >= 18 && h < 20) return 'Hope your evening is going great!'
-  return "Don't forget to sleep on time. Good nig."
+  return "Don't forget to sleep on time. Good g."
 }
 
 // ── Stars ──────────────────────────────────────────────────────
@@ -291,9 +291,11 @@ export default function Dashboard() {
       post={selectedChat.posts}
       preloadedOtherProfile={selectedChat.otherProfile}
       allListenerSessions={isExp ? activeExpresserSessions : undefined}
-      onSwitchListener={isExp ? (session) => { setSelectedChat({ ...session, posts: selectedChat.posts, otherProfile: selectedChat.otherProfile }) } : undefined}
-      onBack={() => { setSelectedChat(null); setView('chats') }}
+onSwitchListener={isExp ? (session) => { 
+  setSelectedChat(session)
+} : undefined}      onBack={() => { setSelectedChat(null); setView('chats') }}
       onEnd={() => { setSelectedChat(null); setView('chats'); fetchPastChats() }}
+      
     />
   }
 
@@ -671,6 +673,10 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
       </div>
     </div>
   )
+
+  function handleSwitchListener(session) {
+  setActiveSession(session)
+}
 }
 
 function PostCard({ post, delay, onClick }) {
@@ -891,6 +897,9 @@ function EmojiPicker({ onSelect, onClose }) {
 // ── Chat View ──────────────────────────────────────────────────
 function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isAISession, post, myProfile, currentUserId, preloadedOtherProfile, allListenerSessions, newListenerNotif, onNewListenerDismiss, onSwitchListener, showEndTip, onEndTipDismiss, onBack, onEnd }) {
   const [sessionId, setSessionId] = useState(initialSessionId) // may be null for pending listener sessions
+  useEffect(() => {
+  setSessionId(initialSessionId)
+}, [initialSessionId])
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
@@ -912,6 +921,8 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
 
   const isAIChat = isSeedSession || isAISession
   const TYPING_REVEAL_MS = 3000
+
+  
 
   // Load other profile
   useEffect(() => {
