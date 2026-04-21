@@ -269,7 +269,7 @@ export default function Dashboard() {
     )
   }
 
-  if (view === 'expresser') return <ExpresserView user={user} myProfile={profile} onBack={() => setView('home')} onSessionStart={s => { setActiveExpresserSessions([s]); setCurrentListenerSession(s) }} />
+  if (view === 'expresser') return <ExpresserView user={user} myProfile={profile} onBack={() => setView('home')} onBrowseListeners={() => setView('listener')} onSessionStart={s => { setActiveExpresserSessions([s]); setCurrentListenerSession(s) }} />
   if (view === 'listener') return <ListenerView user={user} myProfile={profile} todayListenerCount={todayListenerCount}
     onBack={(s, didInteract) => {
       // Only show resume modal if: real session exists, listener sent at least one msg, and session still active
@@ -388,7 +388,7 @@ function RoleCard({ role, title, description, color, hoverBorder, hoverBg, onCli
 }
 
 // ── Expresser View ─────────────────────────────────────────────
-function ExpresserView({ user, myProfile, onBack, onSessionStart }) {
+function ExpresserView({ user, myProfile, onBack, onBrowseListeners, onSessionStart }) {
   const [text, setText] = useState('')
   const [anonymous, setAnonymous] = useState(false)
   const [tag, setTag] = useState(null)
@@ -401,8 +401,6 @@ function ExpresserView({ user, myProfile, onBack, onSessionStart }) {
   const [showConfirm, setShowConfirm] = useState(false)
   const [waitSeconds, setWaitSeconds] = useState(0)
   const [aiJoining, setAiJoining] = useState(false)
-  const [journalText, setJournalText] = useState('')
-  const [showJournal, setShowJournal] = useState(false)
   const [rateLimited, setRateLimited] = useState(false)
 
   const ACK_DURATION_MS = 5000
@@ -447,35 +445,6 @@ function ExpresserView({ user, myProfile, onBack, onSessionStart }) {
     } catch (err) { setError(err.message) } finally { setLoading(false) }
   }
 
-  async function handleAddJournalToPost() {
-    if (!journalText.trim() || !postId) return
-    const addition = journalText.trim()
-    const newContent = postContent + '\n\n' + addition
-
-    // Update the post content in the database
-    await supabase.from('posts').update({ content: newContent }).eq('id', postId)
-    setPostContent(newContent)
-
-    const messageText = `I wanted to add something:\n${addition}`
-
-    // Try to send immediately to any already-active sessions
-    const { data: activeSessions } = await supabase
-      .from('sessions').select('id').eq('post_id', postId).eq('status', 'active')
-
-    if (activeSessions?.length) {
-      await Promise.all(
-        activeSessions.map(s =>
-          supabase.from('messages').insert({ session_id: s.id, sender_id: user.id, content: messageText })
-        )
-      )
-    } else {
-      // No active session yet — queue in sessionStorage (survives remounts)
-      queueJournal(postId, { text: messageText, userId: user.id })
-    }
-
-    setJournalText('')
-    setShowJournal(false)
-  }
 
   const TAGS = ['anxious', 'overwhelmed', 'sad', 'angry', 'confused', 'numb', 'grateful', 'venting']
 
@@ -533,29 +502,8 @@ function ExpresserView({ user, myProfile, onBack, onSessionStart }) {
             )}
           </div>
 
-          {/* Journal with Add button */}
-          <div style={{ padding: '16px 20px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
-            <p style={{ fontSize: 13, color: 'rgba(240,239,232,0.65)', marginBottom: showJournal ? 10 : 0, lineHeight: 1.6 }}>
-              💭 Anything else on your mind? You can add it to your post.
-            </p>
-            {showJournal ? (
-              <>
-                <textarea value={journalText} onChange={e => setJournalText(e.target.value)} placeholder="Add more to your thought..." rows={3} autoFocus
-                  style={{ width: '100%', padding: '12px', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 14, lineHeight: 1.7, color: 'var(--text)', resize: 'none', marginTop: 4 }}
-                  onFocus={e => e.target.style.borderColor = 'var(--accent)'} onBlur={e => e.target.style.borderColor = 'var(--border)'} />
-                {journalText.trim() && (
-                  <button onClick={handleAddJournalToPost}
-                    style={{ marginTop: 10, width: '100%', padding: '10px', borderRadius: 10, background: 'var(--accent)', border: 'none', color: '#fff', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>
-                    Add to my post
-                  </button>
-                )}
-              </>
-            ) : (
-              <button onClick={() => setShowJournal(true)} style={{ fontSize: 13, color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer', background: 'none', border: 'none', marginTop: 6 }}>Write a little more</button>
-            )}
-          </div>
           {/* Browse while waiting */}
-          <button onClick={onBack} style={{ padding: '13px 20px', borderRadius: 'var(--radius)', background: 'transparent', border: '1px solid var(--border)', color: 'rgba(240,239,232,0.6)', fontSize: 14, cursor: 'pointer', textAlign: 'center', transition: 'border-color var(--transition)' }}
+          <button onClick={onBrowseListeners} style={{ padding: '13px 20px', borderRadius: 'var(--radius)', background: 'transparent', border: '1px solid var(--border)', color: 'rgba(240,239,232,0.6)', fontSize: 14, cursor: 'pointer', textAlign: 'center', transition: 'border-color var(--transition)' }}
             onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
             🎧 Browse listener stories while you wait
           </button>
@@ -1285,10 +1233,10 @@ function ListenerFAB({ sessions, currentSessionId, onSwitch }) {
   const activeSessions = sessions.filter(s => s.status !== 'closed')
   if (activeSessions.length <= 1) return null
   return createPortal(
-    <div style={{ position: 'fixed', bottom: 88, right: 20, zIndex: 2000 }}>
+    <div style={{ position: 'fixed', bottom: 88, right: 20, zIndex: 9998, pointerEvents: 'all' }}>
       {/* Popup card — appears above FAB */}
       {open && (
-        <div style={{ position: 'absolute', bottom: 64, right: 0, background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: '10px 0', width: 210, boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}>
+        <div style={{ position: 'absolute', bottom: 64, right: 0, background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: '10px 0', width: 210, boxShadow: '0 8px 40px rgba(0,0,0,0.6)', zIndex: 9999, pointerEvents: 'all' }}>
           <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(240,239,232,0.4)', padding: '0 16px 8px' }}>Listeners</p>
           {activeSessions.map((s, i) => {
             const isCurrent = s.id === currentSessionId
