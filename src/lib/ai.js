@@ -59,7 +59,7 @@ export async function getAIResponse(messages, role, originalPost = '') {
         'anthropic-dangerous-direct-browser-access': 'true' // ok for now
       },
       body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20240620',
+        model: 'claude-3-opus-20240229',
         max_tokens: 150,
         system,
         messages: formattedMessages
@@ -75,7 +75,8 @@ export async function getAIResponse(messages, role, originalPost = '') {
         : "I hear you. Tell me more."
     }
 
-const text = await res.text()
+    const data = await res.json()
+/*const text = await res.text()
 console.log("RAW AI RESPONSE:", text)
 
 let data
@@ -84,7 +85,7 @@ try {
 } catch {
   console.error("NOT JSON:", text)
   return "API broke"
-}
+}*/
     if (data.error) {
       console.error('❌ Anthropic API error:', data.error)
       return role === 'expresser'
