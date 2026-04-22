@@ -59,7 +59,7 @@ export async function getAIResponse(messages, role, originalPost = '') {
         'anthropic-dangerous-direct-browser-access': 'true' // ok for now
       },
       body: JSON.stringify({
-        model: 'claude-3-5-sonnet-latest',
+        model: 'claude-3-5-sonnet-20240620',
         max_tokens: 150,
         system,
         messages: formattedMessages
