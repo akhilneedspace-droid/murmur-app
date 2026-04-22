@@ -59,7 +59,7 @@ export async function getAIResponse(messages, role, originalPost = '') {
         'anthropic-dangerous-direct-browser-access': 'true' // ok for now
       },
       body: JSON.stringify({
-        model: 'claude-3-opus-20240229',
+        model: 'claude-3-haiku-20240307',
         max_tokens: 150,
         system,
         messages: formattedMessages
