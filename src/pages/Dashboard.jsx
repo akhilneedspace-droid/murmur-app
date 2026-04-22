@@ -10,7 +10,7 @@ function getGreeting() {
   const h = new Date().getHours()
   if (h >= 23 || h < 4)  return 'Still up? All okay?'
   if (h >= 4  && h < 12) return 'Good morning'
-  if (h >= 12 && h < 16) return 'Good afr'
+  if (h >= 12 && h < 16) return 'Good afternoon'
   if (h >= 16 && h < 18) return 'Good evenin'
   if (h >= 18 && h < 20) return 'Hope your evening is going great!'
   return "Don't forget to sleep on time. Good night."
@@ -414,7 +414,7 @@ function ExpresserView({ user, myProfile, onBack, onBrowseListeners, onSessionSt
 
   const ACK_DURATION_MS = 5000
   const AI_WAIT_SECS    = 10
-  const DAILY_POST_LIMIT = 10
+  const DAILY_POST_LIMIT = 3
 
   useEffect(() => { setTimeout(() => setVisible(true), 80) }, [])
 
@@ -578,8 +578,8 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   const [showBurnoutNudge, setShowBurnoutNudge] = useState(false)
   const [showBurnoutBlock, setShowBurnoutBlock] = useState(false)
 
-  const DAILY_LISTEN_NUDGE  = 5
-  const DAILY_LISTEN_LIMIT  = 10
+  const DAILY_LISTEN_NUDGE  = 3
+  const DAILY_LISTEN_LIMIT  = 5
 
   useEffect(() => { setTimeout(() => setVisible(true), 80) }, [])
 
@@ -1047,56 +1047,32 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
     const myMsg = { id: tempId, sender_id: currentUserId, content, created_at: new Date().toISOString() }
     seenIds.current.add(tempId)
     const updated = [...messages, myMsg]; setMessages(updated)
-    //trying---
-    // 👉 If AI is listener and this is FIRST user message, force response
-if (isAISession && messages.length === 0) {
-  setAiThinking(true)
-
-  const history = [
-    { role: 'user', content }
-  ]
-
-  const aiText = await getAIResponse(history, 'listener', post?.content ?? '')
-
-  setAiThinking(false)
-
-  const humanDelay = 1500 + Math.random() * 2000
-  setOtherTyping(true)
-  await new Promise(r => setTimeout(r, humanDelay))
-  setOtherTyping(false)
-
-  const aiMsg = {
-    id: `ai-${Date.now()}`,
-    sender_id: 'other',
-    content: aiText,
-    created_at: new Date().toISOString()
-  }
-
-  setMessages([myMsg, aiMsg])
-  return
-}
 
     if (isAIChat) {
       setAiThinking(true)
-      //trying ---const history = updated.map(m => ({ role: m.sender_id === currentUserId ? 'user' : 'assistant', content: m.content }))
-      const history = updated.map(m => ({
-  role: m.sender_id === currentUserId ? 'user' : 'assistant',
-  content: m.content || ''
-})).filter(m => m.content.trim() !== '')
+      // Build history with correct roles — filter empty content
+      const history = updated
+        .filter(m => m.content && m.content.trim())
+        .map(m => ({
+          role: m.sender_id === currentUserId ? 'user' : 'assistant',
+          content: m.content.trim()
+        }))
       const postContext = post?.content ?? ''
-      // Seed = AI plays expresser role; real AI session = AI plays listener role
       const aiRole = isSeedSession ? 'expresser' : 'listener'
       const aiText = await getAIResponse(history, aiRole, postContext)
       setAiThinking(false)
-      // Human-like delay: 1.5–3.5 seconds before showing response
-      const humanDelay = 1500 + Math.random() * 2000
+      if (!aiText) {
+        // API failed — show nothing, user can try again
+        console.error('AI returned null — check API key and proxy')
+        return
+      }
+      // Human-like delay: 1.5–3 seconds
       setOtherTyping(true)
-      await new Promise(r => setTimeout(r, humanDelay))
+      await new Promise(r => setTimeout(r, 1500 + Math.random() * 1500))
       setOtherTyping(false)
       const aiMsg = { id: `ai-${Date.now()}`, sender_id: 'other', content: aiText, created_at: new Date().toISOString() }
       const withAI = [...updated, aiMsg]
       setMessages(withAI)
-      // Store for seed sessions
       if (isSeedSession) { const pid = sessionId.replace('seed-', ''); seedChatStore[pid] = withAI }
       return
     }
