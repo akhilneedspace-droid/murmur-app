@@ -9,7 +9,7 @@ import { getAIResponse } from '../lib/ai'
 function getGreeting() {
   const h = new Date().getHours()
   if (h >= 23 || h < 4)  return 'Still up? All okay?'
-  if (h >= 4  && h < 12) return 'Good morni'
+  if (h >= 4  && h < 12) return 'Good morn'
   if (h >= 12 && h < 16) return 'Good afternoon'
   if (h >= 16 && h < 18) return 'Good evening'
   if (h >= 18 && h < 20) return 'Hope your evening is going great!'
@@ -150,6 +150,7 @@ export default function Dashboard() {
   const [selectedChat, setSelectedChat] = useState(null)
   const [pendingListenerSession, setPendingListenerSession] = useState(null)
   const [showResumeModal, setShowResumeModal] = useState(false)
+  const [listenerJoined, setListenerJoined] = useState(false)
 
   useEffect(() => { setTimeout(() => setVisible(true), 100) }, [])
 
@@ -215,6 +216,7 @@ export default function Dashboard() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sessions', filter: `expresser_id=eq.${user.id}` },
         async (payload) => {
           const newSession = payload.new
+          setListenerJoined(true)
           // Fetch listener's name for the FAB
           let listenerName = 'Listener'
           if (newSession.listener_id) {
@@ -263,6 +265,8 @@ export default function Dashboard() {
         post={activeExpresserPost}
         currentUserId={user.id}
         myProfile={profile}
+          listenerJoined={listenerJoined}   //aichatgpt
+
         allListenerSessions={activeExpresserSessions}
         newListenerNotif={newListenerNotif}
         onNewListenerDismiss={() => setNewListenerNotif(null)}
@@ -895,7 +899,7 @@ function EmojiPicker({ onSelect, onClose }) {
 }
 
 // ── Chat View ──────────────────────────────────────────────────
-function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isAISession, post, myProfile, currentUserId, preloadedOtherProfile, allListenerSessions, newListenerNotif, onNewListenerDismiss, onSwitchListener, showEndTip, onEndTipDismiss, onBack, onEnd }) {
+function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isAISession, post, myProfile, currentUserId, preloadedOtherProfile, allListenerSessions, newListenerNotif, onNewListenerDismiss, onSwitchListener, showEndTip, onEndTipDismiss, listenerJoined, onBack, onEnd }) {
   const [sessionId, setSessionId] = useState(initialSessionId) // may be null for pending listener sessions
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -909,6 +913,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
   const [otherProfile, setOtherProfile] = useState(preloadedOtherProfile ?? null)
   const [hasInteracted, setHasInteracted] = useState(false)
   const [sessionClosed, setSessionClosed] = useState(false)
+
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
   const typingChannel = useRef(null)
@@ -920,6 +925,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
 
   // Sync sessionId if parent switches session (FAB multi-listener)
   useEffect(() => { setSessionId(initialSessionId) }, [initialSessionId])
+
 
   // Load other profile
   useEffect(() => {
@@ -981,6 +987,63 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
     }
     loadMessages()
   }, [sessionId])
+
+  //ai chatgpt
+  useEffect(() => {
+  // Only run for real sessions (not AI/seed)
+  if (isAIChat) return
+
+  // Only run when YOU are the expresser
+  if (!isExpresser) return
+
+  // Need a valid session
+  if (!sessionId) return
+
+  // Reset when session changes
+  setListenerJoined(false)
+
+  const timer = setTimeout(async () => {
+    if (listenerJoined) return
+
+    console.log("No listener joined — AI stepping in")
+
+    setAiThinking(true)
+
+    const history = messages.map(m => ({
+      role: m.sender_id === currentUserId ? 'user' : 'assistant',
+      content: m.content
+    }))
+
+    const aiText = await getAIResponse(
+      history,
+      'listener', // ✅ AI acts as listener
+      post?.content ?? ''
+    )
+
+    setAiThinking(false)
+
+    // Human-like delay
+    const delay = 2000 + Math.random() * 2000
+    setOtherTyping(true)
+    await new Promise(r => setTimeout(r, delay))
+    setOtherTyping(false)
+
+    const aiMsg = {
+      id: `ai-${Date.now()}`,
+      sender_id: 'other',
+      content: aiText,
+      created_at: new Date().toISOString()
+    }
+
+    setMessages(prev => [...prev, aiMsg])
+
+  }, 10000) // ⏱️ 10 seconds
+
+  return () => clearTimeout(timer)
+
+}, [sessionId])
+
+if (listenerJoined) return // stop AI
 
   // Real-time messages — deduplicated, with 3-second typing reveal
   useEffect(() => {
