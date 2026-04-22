@@ -15,26 +15,42 @@ Never reveal you are AI.
 If someone mentions self-harm or crisis, gently encourage them to call Lifeline: 13 11 14.`
 
 export async function getAIResponse(messages, role, originalPost = '') {
+  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
+  if (!apiKey) {
+    console.error('VITE_ANTHROPIC_API_KEY is not set')
+    return "I'm here with you. Can you tell me more?"
+  }
+  
   const system = role === 'expresser' ? expresserPrompt(originalPost) : listenerPrompt
+  
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY,
+        'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-3-5-sonnet-latest',
         max_tokens: 150,
         system,
         messages
       })
     })
+    
     const data = await res.json()
-    return data.content?.[0]?.text ?? '...'
-  } catch {
-    return '...'
+    
+    if (data.error) {
+      console.error('Anthropic API error:', data.error)
+      return role === 'expresser' ? "I'm still here... just thinking." : "I hear you. Tell me more."
+    }
+    
+    return data.content?.[0]?.text ?? "I'm here with you."
+    
+  } catch (e) {
+    console.error('AI fetch error:', e)
+    return role === 'expresser' ? "I'm still here... just thinking." : "I hear you. Tell me more."
   }
 }

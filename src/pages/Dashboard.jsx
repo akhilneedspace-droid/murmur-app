@@ -9,7 +9,7 @@ import { getAIResponse } from '../lib/ai'
 function getGreeting() {
   const h = new Date().getHours()
   if (h >= 23 || h < 4)  return 'Still up? All okay?'
-  if (h >= 4  && h < 12) return 'Good morn'
+  if (h >= 4  && h < 12) return 'Good morning'
   if (h >= 12 && h < 16) return 'Good afternoon'
   if (h >= 16 && h < 18) return 'Good evening'
   if (h >= 18 && h < 20) return 'Hope your evening is going great!'
@@ -140,7 +140,8 @@ export default function Dashboard() {
   const [profile, setProfile] = useState(null)
   const [visible, setVisible] = useState(false)
   const [activeExpresserSessions, setActiveExpresserSessions] = useState([])
-  const [activeExpresserPost, setActiveExpresserPost] = useState(null) // post content for AI context // multi-listener: array
+  const [activeExpresserPost, setActiveExpresserPost] = useState(null) // post content for AI context
+  const [siblingsSessions, setSiblingsSessions] = useState([]) // all sessions for selected chat's post // multi-listener: array
   const [currentListenerSession, setCurrentListenerSession] = useState(null) // which listener expresser is chatting with
   const currentListenerSessionRef = useRef(null) // ref to avoid stale closure in realtime listener
   const [newListenerNotif, setNewListenerNotif] = useState(null) // notification when new listener joins
@@ -150,7 +151,6 @@ export default function Dashboard() {
   const [selectedChat, setSelectedChat] = useState(null)
   const [pendingListenerSession, setPendingListenerSession] = useState(null)
   const [showResumeModal, setShowResumeModal] = useState(false)
-  const [listenerJoined, setListenerJoined] = useState(false)
 
   useEffect(() => { setTimeout(() => setVisible(true), 100) }, [])
 
@@ -216,7 +216,6 @@ export default function Dashboard() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sessions', filter: `expresser_id=eq.${user.id}` },
         async (payload) => {
           const newSession = payload.new
-          setListenerJoined(true)
           // Fetch listener's name for the FAB
           let listenerName = 'Listener'
           if (newSession.listener_id) {
@@ -250,12 +249,15 @@ export default function Dashboard() {
   // If expresser got first session and no current chat, open it
   useEffect(() => {
     if (activeExpresserSessions.length === 1 && !currentListenerSession) {
-  setCurrentListenerSession(activeExpresserSessions[0])
-  if (view === 'listener') setView('home')
-}
+      setCurrentListenerSession(activeExpresserSessions[0])
+      // If browsing listener stories while waiting, bring them back to their chat
+      if (view === 'listener') setView('home')
+    }
   }, [activeExpresserSessions])
 
-  if (currentListenerSession && (view !== 'listener' || currentListenerSession.is_ai))  {
+  // Show chat if: expresser has a session AND not actively in listener view
+  // Exception: always show if it's an AI session (so wait screen transitions work)
+  if (currentListenerSession && (view !== 'listener' || currentListenerSession.is_ai)) {
     return (
       <ChatView
         key={currentListenerSession.id}
@@ -265,8 +267,6 @@ export default function Dashboard() {
         post={activeExpresserPost}
         currentUserId={user.id}
         myProfile={profile}
-          listenerJoined={listenerJoined}   //aichatgpt
-
         allListenerSessions={activeExpresserSessions}
         newListenerNotif={newListenerNotif}
         onNewListenerDismiss={() => setNewListenerNotif(null)}
@@ -288,7 +288,7 @@ export default function Dashboard() {
       setView('home')
     }}
     onComplete={() => { fetchPastChats(); loadListenerCount() }} />
-  if (view === 'chats') return <PastChatsView chats={pastChats} userId={user?.id} onOpen={c => { setSelectedChat(c); setView('chat-detail') }} onDelete={deleteChat} onBack={() => { fetchPastChats(); setView('home') }} />
+  if (view === 'chats') return <PastChatsView chats={pastChats} userId={user?.id} onOpen={async c => { setSelectedChat(c); setView('chat-detail'); if (c.expresser_id === user?.id && c.posts?.id) { const { data } = await supabase.from('sessions').select('*').eq('post_id', c.posts.id); setSiblingsSessions(data || []) } }} onDelete={deleteChat} onBack={() => { fetchPastChats(); setView('home') }} />
   if (view === 'chat-detail' && selectedChat) {
     const isExp = selectedChat.expresser_id === user?.id
     return <ChatView
@@ -299,7 +299,7 @@ export default function Dashboard() {
       myProfile={profile}
       post={selectedChat.posts}
       preloadedOtherProfile={selectedChat.otherProfile}
-      allListenerSessions={isExp ? activeExpresserSessions : undefined}
+      allListenerSessions={isExp ? (siblingsSessions.length > 0 ? siblingsSessions : activeExpresserSessions) : undefined}
       onSwitchListener={isExp ? (session) => { setSelectedChat(session) } : undefined}
       onBack={() => { setSelectedChat(null); setView('chats') }}
       onEnd={() => { setSelectedChat(null); setView('chats'); fetchPastChats() }}
@@ -899,7 +899,7 @@ function EmojiPicker({ onSelect, onClose }) {
 }
 
 // ── Chat View ──────────────────────────────────────────────────
-function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isAISession, post, myProfile, currentUserId, preloadedOtherProfile, allListenerSessions, newListenerNotif, onNewListenerDismiss, onSwitchListener, showEndTip, onEndTipDismiss, listenerJoined, onBack, onEnd }) {
+function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isAISession, post, myProfile, currentUserId, preloadedOtherProfile, allListenerSessions, newListenerNotif, onNewListenerDismiss, onSwitchListener, showEndTip, onEndTipDismiss, onBack, onEnd }) {
   const [sessionId, setSessionId] = useState(initialSessionId) // may be null for pending listener sessions
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -913,7 +913,6 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
   const [otherProfile, setOtherProfile] = useState(preloadedOtherProfile ?? null)
   const [hasInteracted, setHasInteracted] = useState(false)
   const [sessionClosed, setSessionClosed] = useState(false)
-
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
   const typingChannel = useRef(null)
@@ -925,7 +924,6 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
 
   // Sync sessionId if parent switches session (FAB multi-listener)
   useEffect(() => { setSessionId(initialSessionId) }, [initialSessionId])
-
 
   // Load other profile
   useEffect(() => {
@@ -987,63 +985,6 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
     }
     loadMessages()
   }, [sessionId])
-
-  //ai chatgpt
-  useEffect(() => {
-  // Only run for real sessions (not AI/seed)
-  if (isAIChat) return
-
-  // Only run when YOU are the expresser
-  if (!isExpresser) return
-
-  // Need a valid session
-  if (!sessionId) return
-
-  // Reset when session changes
-  setListenerJoined(false)
-
-  const timer = setTimeout(async () => {
-    if (listenerJoined) return
-
-    console.log("No listener joined — AI stepping in")
-
-    setAiThinking(true)
-
-    const history = messages.map(m => ({
-      role: m.sender_id === currentUserId ? 'user' : 'assistant',
-      content: m.content
-    }))
-
-    const aiText = await getAIResponse(
-      history,
-      'listener', // ✅ AI acts as listener
-      post?.content ?? ''
-    )
-
-    setAiThinking(false)
-
-    // Human-like delay
-    const delay = 2000 + Math.random() * 2000
-    setOtherTyping(true)
-    await new Promise(r => setTimeout(r, delay))
-    setOtherTyping(false)
-
-    const aiMsg = {
-      id: `ai-${Date.now()}`,
-      sender_id: 'other',
-      content: aiText,
-      created_at: new Date().toISOString()
-    }
-
-    setMessages(prev => [...prev, aiMsg])
-
-  }, 10000) // ⏱️ 10 seconds
-
-  return () => clearTimeout(timer)
-
-}, [sessionId])
-
-if (listenerJoined) return // stop AI
 
   // Real-time messages — deduplicated, with 3-second typing reveal
   useEffect(() => {
@@ -1111,8 +1052,9 @@ if (listenerJoined) return // stop AI
       setAiThinking(true)
       const history = updated.map(m => ({ role: m.sender_id === currentUserId ? 'user' : 'assistant', content: m.content }))
       const postContext = post?.content ?? ''
+      // Seed = AI plays expresser role; real AI session = AI plays listener role
       const aiRole = isSeedSession ? 'expresser' : 'listener'
-const aiText = await getAIResponse(history, aiRole, postContext)
+      const aiText = await getAIResponse(history, aiRole, postContext)
       setAiThinking(false)
       // Human-like delay: 1.5–3.5 seconds before showing response
       const humanDelay = 1500 + Math.random() * 2000
