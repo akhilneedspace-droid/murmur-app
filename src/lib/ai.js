@@ -75,8 +75,16 @@ export async function getAIResponse(messages, role, originalPost = '') {
         : "I hear you. Tell me more."
     }
 
-    const data = await res.json()
+const text = await res.text()
+console.log("RAW AI RESPONSE:", text)
 
+let data
+try {
+  data = JSON.parse(text)
+} catch {
+  console.error("NOT JSON:", text)
+  return "API broke"
+}
     if (data.error) {
       console.error('❌ Anthropic API error:', data.error)
       return role === 'expresser'
