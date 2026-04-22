@@ -51,20 +51,23 @@ export async function getAIResponse(messages, role, originalPost = '') {
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true' // ok for now
-      },
-      body: JSON.stringify({
-        model: 'claude-3-haiku-20240307',
-        max_tokens: 150,
-        system,
-        messages: formattedMessages
-      })
-    })
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'x-api-key': apiKey,
+    'anthropic-version': '2023-06-01'
+  },
+  body: JSON.stringify({
+    model: 'claude-3-haiku-20240307',
+    max_tokens: 50,
+    messages: [
+      { role: 'user', content: 'Say hello like a human' }
+    ]
+  })
+})
+
+const text = await res.text()
+console.log("FULL RESPONSE:", text)
 
     // ✅ HANDLE HTTP ERRORS
     if (!res.ok) {
