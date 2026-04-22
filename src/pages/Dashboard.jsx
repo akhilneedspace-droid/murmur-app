@@ -414,7 +414,7 @@ function ExpresserView({ user, myProfile, onBack, onBrowseListeners, onSessionSt
 
   const ACK_DURATION_MS = 5000
   const AI_WAIT_SECS    = 10
-  const DAILY_POST_LIMIT = 3
+  const DAILY_POST_LIMIT = 10
 
   useEffect(() => { setTimeout(() => setVisible(true), 80) }, [])
 
@@ -578,8 +578,8 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   const [showBurnoutNudge, setShowBurnoutNudge] = useState(false)
   const [showBurnoutBlock, setShowBurnoutBlock] = useState(false)
 
-  const DAILY_LISTEN_NUDGE  = 3
-  const DAILY_LISTEN_LIMIT  = 5
+  const DAILY_LISTEN_NUDGE  = 5
+  const DAILY_LISTEN_LIMIT  = 10
 
   useEffect(() => { setTimeout(() => setVisible(true), 80) }, [])
 
