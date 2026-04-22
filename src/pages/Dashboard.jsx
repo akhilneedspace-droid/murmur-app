@@ -9,7 +9,7 @@ import { getAIResponse } from '../lib/ai'
 function getGreeting() {
   const h = new Date().getHours()
   if (h >= 23 || h < 4)  return 'Still up? All okay?'
-  if (h >= 4  && h < 12) return 'Good mornin'
+  if (h >= 4  && h < 12) return 'Good morni'
   if (h >= 12 && h < 16) return 'Good afternoon'
   if (h >= 16 && h < 18) return 'Good evening'
   if (h >= 18 && h < 20) return 'Hope your evening is going great!'
@@ -247,12 +247,13 @@ export default function Dashboard() {
 
   // If expresser got first session and no current chat, open it
   useEffect(() => {
-    if (activeExpresserSessions.length === 1 && !currentListenerSession && view !== 'listener') {
-      setCurrentListenerSession(activeExpresserSessions[0])
-    }
+    if (activeExpresserSessions.length === 1 && !currentListenerSession) {
+  setCurrentListenerSession(activeExpresserSessions[0])
+  if (view === 'listener') setView('home')
+}
   }, [activeExpresserSessions])
 
-  if (currentListenerSession && view !== 'listener') {
+  if (currentListenerSession && (view !== 'listener' || currentListenerSession.is_ai))  {
     return (
       <ChatView
         key={currentListenerSession.id}
@@ -1047,7 +1048,8 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       setAiThinking(true)
       const history = updated.map(m => ({ role: m.sender_id === currentUserId ? 'user' : 'assistant', content: m.content }))
       const postContext = post?.content ?? ''
-      const aiText = await getAIResponse(history, 'listener', postContext)
+      const aiRole = isSeedSession ? 'expresser' : 'listener'
+const aiText = await getAIResponse(history, aiRole, postContext)
       setAiThinking(false)
       // Human-like delay: 1.5–3.5 seconds before showing response
       const humanDelay = 1500 + Math.random() * 2000
