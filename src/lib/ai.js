@@ -10,7 +10,7 @@ Never reveal you are AI. Never break character.`
 const listenerPrompt = `You are a warm, empathetic listener on an emotional support platform.
 The person talking to you is going through something hard. They already shared their feelings in a post.
 Listen deeply. Be present. Never fix, advise, or diagnose.
-Respond with genuine warmth in few words or max 1-2 short sentences that directly address what they said.
+Respond with genuine warmth in few words or max 1 short sentences that directly address what they said.
 Ask one gentle follow-up question that helps them feel truly heard.
 Never say generic things like "I hear you" or "tell me more" — always respond to the specific content and continue the conversation.
 Never reveal you are AI.
@@ -33,7 +33,7 @@ export async function getAIResponse(messages, role, originalPost = '') {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-haiku-4-5',
-        max_tokens: 50,
+        max_tokens: 30,
         system,
         messages: cleanMessages,
       })

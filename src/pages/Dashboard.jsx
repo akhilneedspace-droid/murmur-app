@@ -11,9 +11,9 @@ function getGreeting() {
   if (h >= 23 || h < 4)  return 'Still up? All okay?'
   if (h >= 4  && h < 12) return 'Good mornin'
   if (h >= 12 && h < 16) return 'Good afternoon'
-  if (h >= 16 && h < 18) return 'Good evenin'
+  if (h >= 16 && h < 18) return 'Good evening'
   if (h >= 18 && h < 20) return 'Hope your evening is going great!'
-  return "Don't forget to sleep on time. Good nigh."
+  return "Don't forget to sleep on time. Good night."
 }
 
 // ── Stars ──────────────────────────────────────────────────────
@@ -420,7 +420,7 @@ function ExpresserView({ user, myProfile, onBack, onBrowseListeners, onSessionSt
 
   const ACK_DURATION_MS = 5000
   const AI_WAIT_SECS    = 10
-  const DAILY_POST_LIMIT = 10
+  const DAILY_POST_LIMIT = 3
 
   useEffect(() => { setTimeout(() => setVisible(true), 80) }, [])
 
@@ -585,7 +585,7 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   const [showBurnoutBlock, setShowBurnoutBlock] = useState(false)
 
   const DAILY_LISTEN_NUDGE  = 3
-  const DAILY_LISTEN_LIMIT  = 10
+  const DAILY_LISTEN_LIMIT  = 5
 
   useEffect(() => { setTimeout(() => setVisible(true), 80) }, [])
 
@@ -1003,7 +1003,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       // If any message is a system end-message, mark closed
       if (msgs.some(m => m.content?.startsWith('__system__:'))) setSessionClosed(true)
       setMessages(msgs)
-      setHasInteracted(msgs.some(m => m.sender_id === currentUserId && !m.content?.startsWith('__system__:')))
+      setHasInteracted(msgs.some(m => m.sender_id === currentUserId && !m.content?.startsWith('__system__:') && !m.is_ai_msg))
       setLoading(false)
 
       // Send any queued journal messages from sessionStorage
@@ -1023,14 +1023,17 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
     loadMessages()
   }, [sessionId])
 
-  // Fix 1: When AI listener session opens with no messages, AI sends opening greeting
+  // AI listener greets when session opens — fires once no real user messages exist yet
   useEffect(() => {
-    if (!isAISession || isSeedSession || loading || messages.some(m => m.sender_id !== 'other') || !post?.content || !sessionId) return //aichat
+    // Use messages.some check: fire if no non-'other' messages (i.e. no user sent anything yet)
+    const hasUserMessage = messages.some(m => m.sender_id !== 'other' && !m.is_ai_msg)
+    if (!isAISession || isSeedSession || loading || hasUserMessage || !post?.content || !sessionId) return
+    let fired = false
     async function aiGreet() {
+      if (fired) return; fired = true
+      const postText = post.content.trim()
+      if (!postText) return
       setAiThinking(true)
-      // Send the original post as the first user message so AI responds to it directly
-      const postText = post?.content ?? ''
-      if (!postText) { setAiThinking(false); return }
       const history = [{ role: 'user', content: postText }]
       const aiText = await getAIResponse(history, 'listener', postText)
       setAiThinking(false)
@@ -1038,25 +1041,23 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       setOtherTyping(true)
       await new Promise(r => setTimeout(r, 1500 + Math.random() * 1000))
       setOtherTyping(false)
-      const aiMsg = { id: `ai-open-${Date.now()}`, sender_id: 'other', content: aiText, created_at: new Date().toISOString() }
-const openingMsg = {
-  id: `init-${sessionId}`,
-  sender_id: currentUserId,
-  content: post.content,
-  created_at: new Date().toISOString()
-}
-
-setMessages([openingMsg, aiMsg])  
-    seenIds.current.add(aiMsg.id)
-      // Save greeting to DB - split into two awaits for reliability
-      const greetSid = sessionId && !String(sessionId).startsWith('seed-') ? sessionId : null
+      // Show opening post + AI reply together so context is clear
+      const openingMsg = { id: `init-${sessionId}`, sender_id: currentUserId, content: postText, is_ai_msg: false, created_at: new Date().toISOString() }
+      const aiMsg = { id: `ai-open-${Date.now()}`, sender_id: 'other', content: aiText, is_ai_msg: true, created_at: new Date().toISOString() }
+      seenIds.current.add(openingMsg.id)
+      seenIds.current.add(aiMsg.id)
+      setMessages([openingMsg, aiMsg])
+      // Save to DB using currentUserId so RLS passes (is_ai_msg=true marks it as AI)
+      const greetSid = !String(sessionId).startsWith('seed-') ? sessionId : null
       if (greetSid) {
-        await supabase.from('messages').insert({ session_id: greetSid, sender_id: currentUserId,
-is_ai: true, content: aiText })
+        const { error: e1 } = await supabase.from('messages').insert({ session_id: greetSid, sender_id: currentUserId, content: postText })
+        if (e1) console.error('Greeting user msg save failed:', e1)
+        const { error: e2 } = await supabase.from('messages').insert({ session_id: greetSid, sender_id: currentUserId, content: aiText, is_ai_msg: true })
+        if (e2) console.error('Greeting AI msg save failed:', e2)
       }
     }
     aiGreet()
-  }, [isAISession, loading, sessionId])
+  }, [isAISession, loading, sessionId, messages.length])
 
   // Real-time messages — deduplicated, with 3-second typing reveal
   useEffect(() => {
@@ -1136,17 +1137,18 @@ is_ai: true, content: aiText })
       setOtherTyping(true)
       await new Promise(r => setTimeout(r, 1500 + Math.random() * 1500))
       setOtherTyping(false)
-      const aiMsg = { id: `ai-${Date.now()}`, sender_id: 'other', content: aiText, created_at: new Date().toISOString() }
+      const aiMsg = { id: `ai-${Date.now()}`, sender_id: 'other', content: aiText, is_ai_msg: true, created_at: new Date().toISOString() }
       const withAI = [...updated, aiMsg]
       setMessages(withAI)
-      // Fix 3: persist AI chat messages to DB so they survive navigation
-      // Save both messages to DB so they persist across navigation
-      const sid = sessionId && !String(sessionId).startsWith('seed-') ? sessionId : null
+      // Save messages to DB — use currentUserId for both so RLS passes; is_ai_msg marks AI
+      const sid = !String(sessionId).startsWith('seed-') ? sessionId : null
       if (sid) {
-        await supabase.from('messages').insert({ session_id: sid, sender_id: currentUserId, content })
-        await supabase.from('messages').insert({ session_id: sid, sender_id: 'ai-bot', content: aiText })
+        const { error: e1 } = await supabase.from('messages').insert({ session_id: sid, sender_id: currentUserId, content })
+        if (e1) console.error('User msg save failed:', e1)
+        const { error: e2 } = await supabase.from('messages').insert({ session_id: sid, sender_id: currentUserId, content: aiText, is_ai_msg: true })
+        if (e2) console.error('AI msg save failed:', e2)
       }
-      if (isSeedSession && sessionId.startsWith('seed-')) { const pid = sessionId.replace('seed-', ''); seedChatStore[pid] = withAI }
+      if (isSeedSession && String(sessionId).startsWith('seed-')) { const pid = String(sessionId).replace('seed-', ''); seedChatStore[pid] = withAI }
       return
     }
 
@@ -1180,12 +1182,11 @@ is_ai: true, content: aiText })
       const systemContent = isExpresser
         ? '__system__:The expresser has closed this conversation.'
         : '__system__:Your listener has ended this conversation.'
-      const { error } = await supabase.from('messages').insert({
-  session_id: greetSid,
-  sender_id: currentUserId,
-is_ai: true,
-  content: aiText
-})
+      await supabase.from('messages').insert({
+        session_id: sessionId,
+        sender_id: currentUserId,
+        content: systemContent
+      })
     }
     setSessionClosed(true)
     if (isExpresser) { setShowRating(true) } else if (hasInteracted) { setEnded(true) } else { onEnd?.() }
@@ -1284,7 +1285,7 @@ is_ai: true,
                 </div>
               )
             }
-            const isMine = msg.sender_id === currentUserId
+            const isMine = msg.sender_id === currentUserId && !msg.is_ai_msg
             return (
               <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: isMine ? 'flex-end' : 'flex-start', gap: 4 }}>
                 {!isMine && <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}><Avatar url={otherAvatar} name={otherName} size={22} /><span style={{ fontSize: 11, color: 'rgba(240,239,232,0.5)' }}>{otherName}</span></div>}
