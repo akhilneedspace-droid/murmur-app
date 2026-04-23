@@ -16,7 +16,7 @@ export default function Welcome() {
       <div className="orb" style={{ width: 420, height: 420, background: 'radial-gradient(circle, rgba(139,124,246,0.18) 0%, transparent 70%)', top: '-80px', right: '-100px' }} />
       <div className="orb" style={{ width: 300, height: 300, background: 'radial-gradient(circle, rgba(232,131,106,0.10) 0%, transparent 70%)', bottom: '120px', left: '-60px' }} />
 
-      <div style={{ position: 'relative', zIndex: 1, padding: '52px 28px 0', marginTop: '15vh', opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(-12px)', transition: 'opacity 0.6s ease, transform 0.6s ease' }}>
+      <div style={{ position: 'relative', zIndex: 1, padding: '52px 28px 0', marginTop: '10vh', opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(-12px)', transition: 'opacity 0.6s ease, transform 0.6s ease' }}>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', border: '1px solid rgba(139,124,246,0.25)', borderRadius: 20, background: 'rgba(139,124,246,0.08)' }}>
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', animation: 'pulse 2s infinite' }} />
           <span style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 500, letterSpacing: '0.04em' }}>
@@ -25,7 +25,7 @@ export default function Welcome() {
         </div>
       </div>
 
-      <div style={{ position: 'relative', zIndex: 1, padding: '0 28px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+      <div style={{ position: 'relative', zIndex: 1, padding: '0 28px', flex: 1, display: 'flex', marginTop: '20vh' flexDirection: 'column', justifyContent: 'center' }}>
         <div style={{ opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(20px)', transition: 'opacity 0.7s ease 0.15s, transform 0.7s ease 0.15s' }}>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(52px, 14vw, 76px)', fontWeight: 400, lineHeight: 1.05, letterSpacing: '-0.02em', marginBottom: 24, color: 'var(--text)' }}>
             You are<br />
