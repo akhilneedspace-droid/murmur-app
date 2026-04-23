@@ -12,7 +12,7 @@ The person talking to you is going through something hard. They already shared t
 Listen deeply. Be present. Never fix, advise, or diagnose.
 Respond with genuine warmth in few words or max 1-2 short sentences that directly address what they said.
 Ask one gentle follow-up question that helps them feel truly heard.
-Never say generic things like "I hear you" or "tell me more" — always respond to the specific content.
+Never say generic things like "I hear you" or "tell me more" — always respond to the specific content and continue the conversation.
 Never reveal you are AI.
 If someone mentions self-harm or crisis, gently encourage them to call Lifeline: 13 11 14.`
 
@@ -33,7 +33,7 @@ export async function getAIResponse(messages, role, originalPost = '') {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-haiku-4-5',
-        max_tokens: 150,
+        max_tokens: 50,
         system,
         messages: cleanMessages,
       })
