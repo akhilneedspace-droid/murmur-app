@@ -13,7 +13,7 @@ function getGreeting() {
   if (h >= 12 && h < 16) return 'Good afternoon'
   if (h >= 16 && h < 18) return 'Good evenin'
   if (h >= 18 && h < 20) return 'Hope your evening is going great!'
-  return "Don't forget to sleep on time. Good night."
+  return "Don't forget to sleep on time. Good nigh."
 }
 
 // ── Stars ──────────────────────────────────────────────────────
