@@ -25,7 +25,7 @@ export default function Welcome() {
         </div>
       </div>
 
-      <div style={{ position: 'relative', zIndex: 1, padding: '0 28px', flex: 1, display: 'flex', marginTop: '15vh', flexDirection: 'column', justifyContent: 'center' }}>
+      <div style={{ position: 'relative', zIndex: 1, padding: '0 28px', flex: 1, display: 'flex', marginTop: '1vh', flexDirection: 'column', justifyContent: 'center' }}>
         <div style={{ opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(20px)', transition: 'opacity 0.7s ease 0.15s, transform 0.7s ease 0.15s' }}>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(52px, 14vw, 76px)', fontWeight: 400, lineHeight: 1.05, letterSpacing: '-0.02em', marginBottom: 24, color: 'var(--text)' }}>
             You are<br />
