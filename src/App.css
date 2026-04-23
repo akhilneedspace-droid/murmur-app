@@ -58,11 +58,11 @@
 
 @media (max-width: 768px) {
   .pill-container {
-    margin-top: 10vh !important;
+    margin-top: 10px !important;
   }
 
   .hero-content {
-    margin-top: 20vh !important;
+    margin-top: 100px !important;
   }
 }
 
