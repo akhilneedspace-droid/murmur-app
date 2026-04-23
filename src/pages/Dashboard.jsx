@@ -11,7 +11,7 @@ function getGreeting() {
   if (h >= 23 || h < 4)  return 'Still up? All okay?'
   if (h >= 4  && h < 12) return 'Good mornin'
   if (h >= 12 && h < 16) return 'Good afternoon'
-  if (h >= 16 && h < 18) return 'Good evening'
+  if (h >= 16 && h < 18) return 'Good evenin'
   if (h >= 18 && h < 20) return 'Hope your evening is going great!'
   return "Don't forget to sleep on time. Good night."
 }
