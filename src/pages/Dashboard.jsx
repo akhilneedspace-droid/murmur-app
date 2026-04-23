@@ -9,7 +9,7 @@ import { getAIResponse } from '../lib/ai'
 function getGreeting() {
   const h = new Date().getHours()
   if (h >= 23 || h < 4)  return 'Still up? All okay?'
-  if (h >= 4  && h < 12) return 'Good morni'
+  if (h >= 4  && h < 12) return 'Good mo'
   if (h >= 12 && h < 16) return 'Good afternoon'
   if (h >= 16 && h < 18) return 'Good evening'
   if (h >= 18 && h < 20) return 'Hope your evening is going great!'
@@ -203,6 +203,37 @@ export default function Dashboard() {
     setPastChats(enriched.filter(s => !s.deleted_by || !Array.isArray(s.deleted_by) || !s.deleted_by.includes(user.id)))
   }
 
+  // Load seed chats from localStorage and add to pastChats
+  function loadSeedChats() {
+    const seedEntries = []
+    for (const post of SEED_POSTS) {
+      const stored = localStorage.getItem(`seed_msgs_${post.id}`)
+      if (!stored) continue
+      try {
+        const msgs = JSON.parse(stored)
+        if (msgs.length <= 1) continue // only opening msg, user never replied
+        seedEntries.push({
+          id: `seed-${post.id}`,
+          is_seed: true,
+          is_ai: true,
+          status: 'active',
+          expresser_id: 'ai',
+          listener_id: user.id,
+          created_at: msgs[msgs.length - 1]?.created_at ?? new Date().toISOString(),
+          posts: { content: post.content, emotion_tag: post.emotion_tag, is_anonymous: false, user_id: 'ai', id: post.id },
+          otherProfile: { full_name: post.profiles?.full_name ?? 'AI', avatar_url: null }
+        })
+      } catch {}
+    }
+    if (seedEntries.length > 0) {
+      setPastChats(prev => {
+        const ids = new Set(prev.map(c => c.id))
+        const fresh = seedEntries.filter(e => !ids.has(e.id))
+        return [...prev, ...fresh]
+      })
+    }
+  }
+
   async function deleteChat(sessionId) {
     const { data: session } = await supabase.from('sessions').select('deleted_by').eq('id', sessionId).single()
     const existing = Array.isArray(session?.deleted_by) ? session.deleted_by : []
@@ -292,9 +323,8 @@ export default function Dashboard() {
     onComplete={() => { fetchPastChats(); loadListenerCount() }} />
   if (view === 'chats') return <PastChatsView chats={pastChats} userId={user?.id} onOpen={async c => { setSelectedChat(c); setView('chat-detail'); if (c.expresser_id === user?.id && c.posts?.id) { const { data } = await supabase.from('sessions').select('*').eq('post_id', c.posts.id); setSiblingsSessions(data || []) } }} onDelete={deleteChat} onBack={() => { fetchPastChats(); setView('home') }} />
   if (view === 'chat-detail' && selectedChat) {
-    const AI_EXPRESSER_ID = '00000000-0000-0000-0000-000000000001'
     const isExp = selectedChat.expresser_id === user?.id
-    const isAISeed = selectedChat.expresser_id === AI_EXPRESSER_ID
+    const isAISeed = selectedChat.is_seed === true || selectedChat.expresser_id === 'ai'
     return <ChatView
       key={selectedChat.id}
       sessionId={selectedChat.id}
@@ -605,20 +635,17 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   async function handleSelectPost(post) {
     if (todayListenerCount >= DAILY_LISTEN_LIMIT) { setShowBurnoutBlock(true); return }
     if (post.is_seed) {
-      // Check for existing seed session in DB
-      const { data: existingSeed } = await supabase.from('sessions')
-        .select('*').eq('post_id', post.id).eq('listener_id', user.id).single()
-      if (existingSeed) {
-        setActiveSession({ ...existingSeed, is_seed: true, post }); setShowEndTip(false); return
+      // Seed posts use in-memory store — no DB session (post_id is not a real UUID)
+      // Restore from localStorage if returning to this seed chat
+      const storedKey = `seed_msgs_${post.id}`
+      const stored = localStorage.getItem(storedKey)
+      if (stored) {
+        try { seedChatStore[post.id] = JSON.parse(stored) } catch {}
       }
-      // Create a real DB session for seed posts so they appear in Your Conversations
-      // Use a fixed placeholder UUID for AI expresser so session doesn't self-reference
-      const AI_EXPRESSER_ID = '00000000-0000-0000-0000-000000000001'
-      const { data: newSeedSession } = await supabase.from('sessions')
-        .insert({ post_id: post.id, expresser_id: AI_EXPRESSER_ID, listener_id: user.id, status: 'active', is_ai: true })
-        .select().single()
-      if (!seedChatStore[post.id]) seedChatStore[post.id] = [{ id: `seed-init-${post.id}`, sender_id: 'other', content: post.content, created_at: new Date().toISOString() }]
-      setActiveSession({ id: newSeedSession?.id ?? `seed-${post.id}`, is_seed: true, post })
+      if (!seedChatStore[post.id]) {
+        seedChatStore[post.id] = [{ id: `seed-init-${post.id}`, sender_id: 'other', content: post.content, created_at: new Date().toISOString() }]
+      }
+      setActiveSession({ id: `seed-${post.id}`, is_seed: true, post })
       setShowEndTip(true); return
     }
     const { data: expresserProfile } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', post.user_id).single()
@@ -664,7 +691,11 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
       currentUserId={user.id}
       showEndTip={showEndTip}
       onEndTipDismiss={() => setShowEndTip(false)}
-      onBack={(didInteract) => onBack(activeSession, didInteract)}
+      onBack={(didInteract) => {
+        // Only show resume modal for real (non-seed) sessions
+        if (activeSession.is_seed) { onBack(null, false); return }
+        onBack(activeSession, didInteract)
+      }}
       onEnd={() => { setActiveSession(null); onComplete?.(); fetchPosts() }}
     />
   }
@@ -982,7 +1013,12 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       loadSeedMessages(); return
     }
     if (isSeedSession) {
-      const pid = sessionId.replace('seed-', '')
+      const pid = String(sessionId).replace('seed-', '')
+      // Restore from localStorage if not in memory
+      if (!seedChatStore[pid]) {
+        const stored = localStorage.getItem(`seed_msgs_${pid}`)
+        if (stored) { try { seedChatStore[pid] = JSON.parse(stored) } catch {} }
+      }
       const msgs = seedChatStore[pid] || []
       msgs.forEach(m => seenIds.current.add(m.id))
       setMessages(msgs); setHasInteracted(msgs.some(m => m.sender_id === currentUserId)); setLoading(false); return
@@ -1023,37 +1059,54 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
     loadMessages()
   }, [sessionId])
 
-  // AI listener greets when session opens — fires once no real user messages exist yet
+  // AI listener greets when session opens — fires once if AI hasn't replied yet
   useEffect(() => {
-    // Use messages.some check: fire if no non-'other' messages (i.e. no user sent anything yet)
-    const hasUserMessage = messages.some(m => m.sender_id !== 'other' && !m.is_ai_msg)
-    if (!isAISession || isSeedSession || loading || hasUserMessage || !post?.content || !sessionId) return
+    const hasAIReply = messages.some(m => m.is_ai_msg || (m.sender_id === 'other' && m.id.startsWith('ai-')))
+    // Greet if: real AI session, not seed, not loading, AI hasn't spoken yet, have post content
+    if (!isAISession || isSeedSession || loading || hasAIReply || !post?.content || !sessionId) return
     let fired = false
     async function aiGreet() {
       if (fired) return; fired = true
       const postText = post.content.trim()
       if (!postText) return
       setAiThinking(true)
-      const history = [{ role: 'user', content: postText }]
+      // Build history from ALL existing messages so AI has full context
+      const existingHistory = messages
+        .filter(m => m.content && m.content.trim() && !m.content.startsWith('__system__:'))
+        .map(m => ({
+          role: (m.sender_id === currentUserId && !m.is_ai_msg) ? 'user' : 'assistant',
+          content: m.content.trim()
+        }))
+      // If no existing messages, use post content as the opening message
+      const history = existingHistory.length > 0 ? existingHistory : [{ role: 'user', content: postText }]
       const aiText = await getAIResponse(history, 'listener', postText)
       setAiThinking(false)
       if (!aiText) return
       setOtherTyping(true)
       await new Promise(r => setTimeout(r, 1500 + Math.random() * 1000))
       setOtherTyping(false)
-      // Show opening post + AI reply together so context is clear
-      const openingMsg = { id: `init-${sessionId}`, sender_id: currentUserId, content: postText, is_ai_msg: false, created_at: new Date().toISOString() }
       const aiMsg = { id: `ai-open-${Date.now()}`, sender_id: 'other', content: aiText, is_ai_msg: true, created_at: new Date().toISOString() }
-      seenIds.current.add(openingMsg.id)
       seenIds.current.add(aiMsg.id)
-      setMessages([openingMsg, aiMsg])
-      // Save to DB using currentUserId so RLS passes (is_ai_msg=true marks it as AI)
-      const greetSid = !String(sessionId).startsWith('seed-') ? sessionId : null
-      if (greetSid) {
-        const { error: e1 } = await supabase.from('messages').insert({ session_id: greetSid, sender_id: currentUserId, content: postText })
-        if (e1) console.error('Greeting user msg save failed:', e1)
-        const { error: e2 } = await supabase.from('messages').insert({ session_id: greetSid, sender_id: currentUserId, content: aiText, is_ai_msg: true })
-        if (e2) console.error('Greeting AI msg save failed:', e2)
+      // If no existing messages, show opening post + AI reply together
+      if (messages.length === 0) {
+        const openingMsg = { id: `init-${sessionId}`, sender_id: currentUserId, content: postText, is_ai_msg: false, created_at: new Date().toISOString() }
+        seenIds.current.add(openingMsg.id)
+        setMessages([openingMsg, aiMsg])
+        const greetSid = !String(sessionId).startsWith('seed-') ? sessionId : null
+        if (greetSid) {
+          const { error: e1 } = await supabase.from('messages').insert({ session_id: greetSid, sender_id: currentUserId, content: postText })
+          if (e1) console.error('Opening post save failed:', e1)
+          const { error: e2 } = await supabase.from('messages').insert({ session_id: greetSid, sender_id: currentUserId, content: aiText, is_ai_msg: true })
+          if (e2) console.error('AI greeting save failed:', e2)
+        }
+      } else {
+        // User already sent messages — just append AI reply
+        setMessages(m => [...m, aiMsg])
+        const greetSid = !String(sessionId).startsWith('seed-') ? sessionId : null
+        if (greetSid) {
+          const { error } = await supabase.from('messages').insert({ session_id: greetSid, sender_id: currentUserId, content: aiText, is_ai_msg: true })
+          if (error) console.error('AI greeting save failed:', error)
+        }
       }
     }
     aiGreet()
@@ -1148,7 +1201,12 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
         const { error: e2 } = await supabase.from('messages').insert({ session_id: sid, sender_id: currentUserId, content: aiText, is_ai_msg: true })
         if (e2) console.error('AI msg save failed:', e2)
       }
-      if (isSeedSession && String(sessionId).startsWith('seed-')) { const pid = String(sessionId).replace('seed-', ''); seedChatStore[pid] = withAI }
+      if (isSeedSession && String(sessionId).startsWith('seed-')) {
+        const pid = String(sessionId).replace('seed-', '')
+        seedChatStore[pid] = withAI
+        // Persist to localStorage so seed chats survive navigation
+        try { localStorage.setItem(`seed_msgs_${pid}`, JSON.stringify(withAI)) } catch {}
+      }
       return
     }
 
