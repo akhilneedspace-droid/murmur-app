@@ -1025,7 +1025,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
 
   // Fix 1: When AI listener session opens with no messages, AI sends opening greeting
   useEffect(() => {
-    if (!isAISession || isSeedSession || loading || messages.length > 0 || !post?.content || !sessionId) return
+    if (!isAISession || isSeedSession || loading || messages.some(m => m.sender_id !== 'other') || !post?.content || !sessionId) return //aichat
     async function aiGreet() {
       setAiThinking(true)
       // Send the original post as the first user message so AI responds to it directly
@@ -1039,12 +1039,20 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       await new Promise(r => setTimeout(r, 1500 + Math.random() * 1000))
       setOtherTyping(false)
       const aiMsg = { id: `ai-open-${Date.now()}`, sender_id: 'other', content: aiText, created_at: new Date().toISOString() }
-      setMessages([aiMsg])
-      seenIds.current.add(aiMsg.id)
+const openingMsg = {
+  id: `init-${sessionId}`,
+  sender_id: currentUserId,
+  content: post.content,
+  created_at: new Date().toISOString()
+}
+
+setMessages([openingMsg, aiMsg])  
+    seenIds.current.add(aiMsg.id)
       // Save greeting to DB - split into two awaits for reliability
       const greetSid = sessionId && !String(sessionId).startsWith('seed-') ? sessionId : null
       if (greetSid) {
-        await supabase.from('messages').insert({ session_id: greetSid, sender_id: 'ai-bot', content: aiText })
+        await supabase.from('messages').insert({ session_id: greetSid, sender_id: currentUserId,
+is_ai: true, content: aiText })
       }
     }
     aiGreet()
@@ -1172,11 +1180,12 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       const systemContent = isExpresser
         ? '__system__:The expresser has closed this conversation.'
         : '__system__:Your listener has ended this conversation.'
-      await supabase.from('messages').insert({
-        session_id: sessionId,
-        sender_id: currentUserId,
-        content: systemContent
-      })
+      const { error } = await supabase.from('messages').insert({
+  session_id: greetSid,
+  sender_id: currentUserId,
+is_ai: true,
+  content: aiText
+})
     }
     setSessionClosed(true)
     if (isExpresser) { setShowRating(true) } else if (hasInteracted) { setEnded(true) } else { onEnd?.() }
