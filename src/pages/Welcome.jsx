@@ -20,12 +20,12 @@ export default function Welcome() {
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', border: '1px solid rgba(139,124,246,0.25)', borderRadius: 20, background: 'rgba(139,124,246,0.08)' }}>
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', animation: 'pulse 2s infinite' }} />
           <span style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 500, letterSpacing: '0.04em' }}>
-            Quiet space. Real feelin.
+            Quiet space. Real feel.
           </span>
         </div>
       </div>
 
-      <div style={{ position: 'relative', zIndex: 1, padding: '0 28px', flex: 1, display: 'flex', marginTop: '20vh', flexDirection: 'column', justifyContent: 'center' }}>
+      <div style={{ position: 'relative', zIndex: 1, padding: '0 28px', flex: 1, display: 'flex', marginTop: '15vh', flexDirection: 'column', justifyContent: 'center' }}>
         <div style={{ opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(20px)', transition: 'opacity 0.7s ease 0.15s, transform 0.7s ease 0.15s' }}>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(52px, 14vw, 76px)', fontWeight: 400, lineHeight: 1.05, letterSpacing: '-0.02em', marginBottom: 24, color: 'var(--text)' }}>
             You are<br />
