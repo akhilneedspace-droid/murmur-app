@@ -255,25 +255,48 @@ if (phone && !/^\+61[0-9]{9}$/.test(phone)) {
                 inputMode={label.includes('Phone') ? 'numeric' : undefined}
                 value={value}
                 onChange={e => {
-                  if (label.includes('Phone')) {
-                    let val = e.target.value.replace(/\s/g, '')
+                if (label.includes('Phone')) {
+                  // allow digits and +
+                  const val = e.target.value.replace(/[^\d+]/g, '')
+                  setter(val)
+                } else {
+                  setter(e.target.value)
+                }
+                setError('')
+                }}
+                onBlur={e => {
+                  if (!label.includes('Phone')) return
 
-                    // Convert 04XXXXXXXX → +614XXXXXXXX
-                    if (val.startsWith('04')) {
-                      val = '+61' + val.slice(1)
-                    }
+                  let val = e.target.value.replace(/\D/g, '') // digits only
 
-                    // Allow only +61 format
-                    if (!val.startsWith('+61') && val.length > 0) return
-
-                    // Limit to +61 + 9 digits
-                    if (val.length > 12) return
-
-                    setter(val)
-                  } else {
-                    setter(e.target.value)
+                  if (!val) {
+                    setter('')
+                    return
                   }
-                  setError('')
+
+                  // Cases:
+                  // 0412345678 → +61412345678
+                  if (val.startsWith('0')) {
+                    val = '61' + val.slice(1)
+                  }
+
+                  // 412345678 → +61412345678
+                  else if (val.length === 9) {
+                    val = '61' + val
+                  }
+
+                  // 61412345678 → already correct
+                  else if (val.startsWith('61')) {
+                    // keep as is
+                  }
+
+                  else {
+                    // invalid → reset
+                    setError('Enter a valid Australian phone number')
+                    return
+                  }
+
+                  setter('+' + val)
                 }}
                 placeholder={placeholder}
                 required={required}
@@ -284,7 +307,7 @@ if (phone && !/^\+61[0-9]{9}$/.test(phone)) {
                   transition: 'border-color var(--transition)'
                 }}
                 onFocus={e => e.target.style.borderColor = 'var(--accent)'}
-                onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                //onBlur={e => e.target.style.borderColor = 'var(--border)'}
               />
             </div>
           ))}
