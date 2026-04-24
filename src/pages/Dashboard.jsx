@@ -10,7 +10,7 @@ function getGreeting() {
   const h = new Date().getHours()
   if (h >= 23 || h < 4)  return 'Still up? All okay?'
   if (h >= 4  && h < 12) return 'Good'
-  if (h >= 12 && h < 16) return 'Good after'
+  if (h >= 12 && h < 16) return 'Good af'
   if (h >= 16 && h < 18) return 'Good evening'
   if (h >= 18 && h < 20) return 'Hope your evening is going great!'
   return "Don't forget to sleep on time. Good night."
@@ -219,7 +219,7 @@ export default function Dashboard() {
   function loadSeedChats() {
     const seedEntries = []
     for (const post of SEED_POSTS) {
-      const stored = localStorage.getItem(`seed_msgs_${post.id}`)
+      const stored = localStorage.getItem(`seed_msgs_${user.id}_${post.id}`) //chatgpt try
       if (!stored) continue
       try {
         const msgs = JSON.parse(stored)
@@ -403,11 +403,11 @@ export default function Dashboard() {
         </div>
 
         <RoleCard role="Expresser" title="Yes, I want to share my feelings"
-          description="Write what's on your mind. A real person will be here to listen. You matter."
+          description="Write what's on your mind - thoughts, feelings, anything."
           color="var(--accent)" hoverBorder="rgba(139,124,246,0.4)" hoverBg="var(--accent-glow)" onClick={() => setView('expresser')} />
 
         <RoleCard role="Listener" title="I want to be there for someone"
-          description="Browse what people are sharing. Pick one and simply be present."
+          description="Browse what people are sharing. Pick one and listen with care."
           color="var(--teal)" hoverBorder="rgba(93,202,165,0.4)" hoverBg="rgba(93,202,165,0.05)" onClick={() => setView('listener')} />
 
         <button onClick={() => { fetchPastChats(); setView('chats') }} style={{ width: '100%', textAlign: 'left', padding: '16px 20px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'border-color var(--transition)' }}
@@ -1028,7 +1028,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       const pid = String(sessionId).replace('seed-', '')
       // Restore from localStorage if not in memory
       if (!seedChatStore[pid]) {
-        const stored = localStorage.getItem(`seed_msgs_${pid}`)
+        const stored = localStorage.getItem(`seed_msgs_${user.id}_${pid}`)
         if (stored) { try { seedChatStore[pid] = JSON.parse(stored) } catch {} }
       }
       const msgs = seedChatStore[pid] || []
@@ -1217,7 +1217,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
         const pid = String(sessionId).replace('seed-', '')
         seedChatStore[pid] = withAI
         // Persist to localStorage so seed chats survive navigation
-        try { localStorage.setItem(`seed_msgs_${pid}`, JSON.stringify(withAI)) } catch {}
+        try { localStorage.setItem(`seed_msgs_${currentUserId}_${pid}`, JSON.stringify(withAI)) } catch {} //chatgpt seed trying
       }
       return
     }
