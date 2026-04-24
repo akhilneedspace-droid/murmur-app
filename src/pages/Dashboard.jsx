@@ -9,7 +9,7 @@ import { getAIResponse } from '../lib/ai'
 function getGreeting() {
   const h = new Date().getHours()
   if (h >= 23 || h < 4)  return 'Still up? All okay?'
-  if (h >= 4  && h < 12) return 'Good m'
+  if (h >= 4  && h < 12) return 'Good'
   if (h >= 12 && h < 16) return 'Good afternoon'
   if (h >= 16 && h < 18) return 'Good evening'
   if (h >= 18 && h < 20) return 'Hope your evening is going great!'
@@ -158,6 +158,7 @@ export default function Dashboard() {
     if (!user) return
     loadProfile()
     loadListenerCount()
+    loadSeedChats() // chatgpt try
     fetchPastChats()
   }, [user])
 
@@ -200,7 +201,18 @@ export default function Dashboard() {
       })
     )
 
-    setPastChats(enriched.filter(s => !s.deleted_by || !Array.isArray(s.deleted_by) || !s.deleted_by.includes(user.id)))
+    //setPastChats(enriched.filter(s => !s.deleted_by || !Array.isArray(s.deleted_by) || !s.deleted_by.includes(user.id))) chatgpt try
+    setPastChats(prev => {
+  const cleaned = enriched.filter(s =>
+    !s.deleted_by || !Array.isArray(s.deleted_by) || !s.deleted_by.includes(user.id)
+  )
+
+  // keep existing seed chats
+  const existingIds = new Set(cleaned.map(c => c.id))
+  const merged = [...cleaned, ...prev.filter(c => c.is_seed && !existingIds.has(c.id))]
+
+  return merged
+})
   }
 
   // Load seed chats from localStorage and add to pastChats
@@ -211,7 +223,7 @@ export default function Dashboard() {
       if (!stored) continue
       try {
         const msgs = JSON.parse(stored)
-        if (msgs.length <= 1) continue // only opening msg, user never replied
+        if (!msgs || msgs.length === 0) continue // only opening msg, user never replied //chatgpt try
         seedEntries.push({
           id: `seed-${post.id}`,
           is_seed: true,
