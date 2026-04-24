@@ -9,8 +9,8 @@ import { getAIResponse } from '../lib/ai'
 function getGreeting() {
   const h = new Date().getHours()
   if (h >= 23 || h < 4)  return 'Still up? All okay?'
-  if (h >= 4  && h < 12) return 'Good'
-  if (h >= 12 && h < 16) return 'Good '
+  if (h >= 4  && h < 12) return 'Good morning'
+  if (h >= 12 && h < 16) return 'Good noon'
   if (h >= 16 && h < 18) return 'Good evening'
   if (h >= 18 && h < 20) return 'Hope your evening is going great!'
   return "Don't forget to sleep on time. Good night."
@@ -158,7 +158,6 @@ export default function Dashboard() {
     if (!user) return
     loadProfile()
     loadListenerCount()
-    loadSeedChats() // chatgpt try
     fetchPastChats()
   }, [user])
 
@@ -201,35 +200,23 @@ export default function Dashboard() {
       })
     )
 
-    //setPastChats(enriched.filter(s => !s.deleted_by || !Array.isArray(s.deleted_by) || !s.deleted_by.includes(user.id))) chatgpt try
-    setPastChats(prev => {
-  const cleaned = enriched.filter(s =>
-    !s.deleted_by || !Array.isArray(s.deleted_by) || !s.deleted_by.includes(user.id)
-  )
-
-  // keep existing seed chats
-  const existingIds = new Set(cleaned.map(c => c.id))
-  const merged = [...cleaned, ...prev.filter(c => c.is_seed && !existingIds.has(c.id))]
-
-  return merged
-})
+    setPastChats(enriched.filter(s => !s.deleted_by || !Array.isArray(s.deleted_by) || !s.deleted_by.includes(user.id)))
   }
 
   // Load seed chats from localStorage and add to pastChats
   function loadSeedChats() {
     const seedEntries = []
     for (const post of SEED_POSTS) {
-      const stored = localStorage.getItem(`seed_msgs_${user.id}_${post.id}`) //chatgpt try
+      const stored = localStorage.getItem(`seed_msgs_${post.id}`)
       if (!stored) continue
       try {
         const msgs = JSON.parse(stored)
-        if (!msgs || msgs.length === 0) continue // only opening msg, user never replied //chatgpt try
-        const isEnded = localStorage.getItem(`seed_msgs_${user.id}_${post.id}_ended`) === 'true'
+        if (msgs.length <= 1) continue // only opening msg, user never replied
         seedEntries.push({
           id: `seed-${post.id}`,
           is_seed: true,
           is_ai: true,
-          status: isEnded ? 'closed' : 'active',
+          status: 'active',
           expresser_id: 'ai',
           listener_id: user.id,
           created_at: msgs[msgs.length - 1]?.created_at ?? new Date().toISOString(),
@@ -404,11 +391,11 @@ export default function Dashboard() {
         </div>
 
         <RoleCard role="Expresser" title="Yes, I want to share my feelings"
-          description="Write what's on your mind - thoughts, feelings, anything."
+          description="Write what's on your mind. A real person will be here to listen. You matter."
           color="var(--accent)" hoverBorder="rgba(139,124,246,0.4)" hoverBg="var(--accent-glow)" onClick={() => setView('expresser')} />
 
         <RoleCard role="Listener" title="I want to be there for someone"
-          description="Browse what people are sharing. Pick one and listen with care."
+          description="Browse what people are sharing. Pick one and simply be present."
           color="var(--teal)" hoverBorder="rgba(93,202,165,0.4)" hoverBg="rgba(93,202,165,0.05)" onClick={() => setView('listener')} />
 
         <button onClick={() => { fetchPastChats(); setView('chats') }} style={{ width: '100%', textAlign: 'left', padding: '16px 20px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'border-color var(--transition)' }}
@@ -462,8 +449,8 @@ function ExpresserView({ user, myProfile, onBack, onBrowseListeners, onSessionSt
   const [rateLimited, setRateLimited] = useState(false)
 
   const ACK_DURATION_MS = 5000
-  const AI_WAIT_SECS    = 15
-  const DAILY_POST_LIMIT = 10
+  const AI_WAIT_SECS    = 10
+  const DAILY_POST_LIMIT = 3
 
   useEffect(() => { setTimeout(() => setVisible(true), 80) }, [])
 
@@ -505,7 +492,7 @@ function ExpresserView({ user, myProfile, onBack, onBrowseListeners, onSessionSt
   }
 
 
-  const TAGS = ['anxious', 'happy','overwhelmed', 'sad', 'angry', 'confused', 'numb', 'grateful', 'venting']
+  const TAGS = ['anxious', 'overwhelmed', 'sad', 'angry', 'confused', 'numb', 'grateful', 'venting']
 
   if (rateLimited) {
     return (
@@ -526,7 +513,7 @@ function ExpresserView({ user, myProfile, onBack, onBrowseListeners, onSessionSt
         <div style={{ animation: 'fadeUp 0.6s ease both' }}>
           <div style={{ fontSize: 52, marginBottom: 16, animation: 'float 3s ease-in-out infinite' }}>🤍</div>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(26px, 7vw, 34px)', fontWeight: 400, color: 'var(--accent)', letterSpacing: '-0.02em', marginBottom: 14 }}>Thank you for sharing.</h2>
-          <p style={{ fontSize: 15, color: 'rgba(240,239,232,0.7)', lineHeight: 1.8, maxWidth: 300 }}>We know it wasn't easy to put your heart into words. Glad you shared it.</p>
+          <p style={{ fontSize: 15, color: 'rgba(240,239,232,0.7)', lineHeight: 1.8, maxWidth: 300 }}>We know it wasn't easy to put your heart into words. What you just did takes real courage — and it matters deeply.</p>
         </div>
         <div style={{ width: '100%', maxWidth: 340, padding: '16px 20px', background: 'var(--bg2)', border: '1px solid rgba(139,124,246,0.2)', borderRadius: 'var(--radius)', textAlign: 'left', animation: 'fadeUp 0.6s ease 0.2s both' }}>
           <p style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>Your words</p>
@@ -556,15 +543,15 @@ function ExpresserView({ user, myProfile, onBack, onBrowseListeners, onSessionSt
                 <div style={{ height: 3, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
                   <div style={{ height: '100%', width: `${pct}%`, background: 'var(--accent)', borderRadius: 2, transition: 'width 1s linear' }} />
                 </div>
-                <p style={{ fontSize: 13, color: 'rgba(240,239,232,0.5)', lineHeight: 1.6 }}></p>  
+                <p style={{ fontSize: 13, color: 'rgba(240,239,232,0.5)', lineHeight: 1.6 }}>If no one is free right now, a warm listener will step in for you.</p>
               </>
             )}
           </div>
 
           {/* Browse while waiting */}
           <button onClick={onBrowseListeners} style={{ padding: '13px 20px', borderRadius: 'var(--radius)', background: 'transparent', border: '1px solid var(--border)', color: 'rgba(240,239,232,0.6)', fontSize: 14, cursor: 'pointer', textAlign: 'center', transition: 'border-color var(--transition)' }}
-            onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(51, 137, 199, 0.5)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
-            Browse listener stories while you wait
+            onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+            🎧 Browse listener stories while you wait
           </button>
         </div>
       </div>
@@ -628,7 +615,7 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   const [showBurnoutBlock, setShowBurnoutBlock] = useState(false)
 
   const DAILY_LISTEN_NUDGE  = 3
-  const DAILY_LISTEN_LIMIT  = 10
+  const DAILY_LISTEN_LIMIT  = 5
 
   useEffect(() => { setTimeout(() => setVisible(true), 80) }, [])
 
@@ -1029,7 +1016,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       const pid = String(sessionId).replace('seed-', '')
       // Restore from localStorage if not in memory
       if (!seedChatStore[pid]) {
-        const stored = localStorage.getItem(`seed_msgs_${user.id}_${pid}`)
+        const stored = localStorage.getItem(`seed_msgs_${pid}`)
         if (stored) { try { seedChatStore[pid] = JSON.parse(stored) } catch {} }
       }
       const msgs = seedChatStore[pid] || []
@@ -1217,8 +1204,55 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       if (isSeedSession && String(sessionId).startsWith('seed-')) {
         const pid = String(sessionId).replace('seed-', '')
         seedChatStore[pid] = withAI
-        // Persist to localStorage so seed chats survive navigation
-        try { localStorage.setItem(`seed_msgs_${currentUserId}_${pid}`, JSON.stringify(withAI)) } catch {} //chatgpt seed trying
+        // Also persist to localStorage as fallback
+        try { localStorage.setItem(`seed_msgs_${pid}`, JSON.stringify(withAI)) } catch {}
+
+        // On first exchange, create a real post + session in DB so chat syncs across devices
+        if (withAI.filter(m => m.sender_id === currentUserId && !m.is_ai_msg).length === 1) {
+          try {
+            // Create a real post representing the seed story
+            const { data: realPost } = await supabase.from('posts')
+              .insert({
+                user_id: currentUserId, // listener is the creator for tracking
+                content: post?.content ?? '',
+                emotion_tag: post?.emotion_tag ?? null,
+                is_anonymous: false,
+                status: 'active'
+              }).select().single()
+
+            if (realPost) {
+              // Create real session: listener_id = currentUserId, expresser_id = currentUserId
+              // is_ai marks it as AI chat so it renders correctly
+              const { data: realSession } = await supabase.from('sessions')
+                .insert({
+                  post_id: realPost.id,
+                  expresser_id: currentUserId,
+                  listener_id: currentUserId,
+                  status: 'active',
+                  is_ai: true
+                }).select().single()
+
+              if (realSession) {
+                // Save all messages so far to DB
+                for (const m of withAI) {
+                  if (m.id.startsWith('seed-init-') || m.id.startsWith('pending')) continue
+                  await supabase.from('messages').insert({
+                    session_id: realSession.id,
+                    sender_id: currentUserId,
+                    content: m.content,
+                    is_ai_msg: m.is_ai_msg ?? false
+                  })
+                }
+                // Update sessionId so future messages go to DB
+                setSessionId(realSession.id)
+                console.log('Seed chat promoted to DB session:', realSession.id)
+              }
+            }
+          } catch (err) {
+            console.error('Failed to promote seed chat to DB:', err)
+            // Falls back to localStorage — chat still works on this device
+          }
+        }
       }
       return
     }
@@ -1246,7 +1280,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
   }
 
   async function handleEndChat() {
-    if (sessionId && !String(sessionId).startsWith('seed-')) {
+    if (!isAIChat && sessionId) {
       await supabase.from('sessions').update({ status: 'closed' }).eq('id', sessionId)
       // Prefix with __system__: so receiver renders it as a notice not a bubble
       // Using currentUserId (not 'system') so Supabase RLS allows the insert
@@ -1260,17 +1294,6 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       })
     }
     setSessionClosed(true)
-    // Mark seed chats as ended in localStorage
-    if (isSeedSession && String(sessionId).startsWith('seed-')) {
-      const pid = String(sessionId).replace('seed-', '')
-      try {
-        const stored = localStorage.getItem(`seed_msgs_${currentUserId}_${pid}`)
-        if (stored) {
-          const msgs = JSON.parse(stored)
-          localStorage.setItem(`seed_msgs_${currentUserId}_${pid}_ended`, 'true')
-        }
-      } catch {}
-    }
     if (isExpresser) { setShowRating(true) } else if (hasInteracted) { setEnded(true) } else { onEnd?.() }
   }
 
