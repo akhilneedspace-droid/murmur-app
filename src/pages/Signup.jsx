@@ -27,6 +27,11 @@ export default function Signup() {
     if (!fullName.trim()) { setError('Please enter your full name.'); return }
     if (!email.includes('@')) { setError('Please enter a valid email address.'); return }
     if (password.length < 8) { setError('Password must be at least 8 characters.'); return }
+    // AU phone validation chatgpt
+if (phone && !/^\+61[0-9]{9}$/.test(phone)) {
+  setError('Please enter a valid Australian phone number (+61XXXXXXXXX)')
+  return
+}
 
     setLoading(true)
     try {
@@ -53,7 +58,8 @@ export default function Signup() {
           id: data.user.id,
           full_name: fullName.trim(),
           email: email.trim().toLowerCase(),
-          phone: phone.trim() || null,
+          phone: phone.trim() ? phone.trim() : null,
+          country: 'AU',
           identity: identity ?? null,
         })
         setStep('otp')
@@ -94,7 +100,8 @@ export default function Signup() {
           id: confirmedUser.id,
           full_name: fullName.trim(),
           email: email.trim().toLowerCase(),
-          phone: phone.trim() || null,
+          phone: phone.trim() ? phone.trim() : null,
+          country: 'AU',
           identity: identity ?? null,
         }, { onConflict: 'id' })
       }
@@ -245,8 +252,29 @@ export default function Signup() {
               </label>
               <input
                 type={type}
+                inputMode={label.includes('Phone') ? 'numeric' : undefined}
                 value={value}
-                onChange={e => { setter(e.target.value); setError('') }}
+                onChange={e => {
+                  if (label.includes('Phone')) {
+                    let val = e.target.value.replace(/\s/g, '')
+
+                    // Convert 04XXXXXXXX → +614XXXXXXXX
+                    if (val.startsWith('04')) {
+                      val = '+61' + val.slice(1)
+                    }
+
+                    // Allow only +61 format
+                    if (!val.startsWith('+61') && val.length > 0) return
+
+                    // Limit to +61 + 9 digits
+                    if (val.length > 12) return
+
+                    setter(val)
+                  } else {
+                    setter(e.target.value)
+                  }
+                  setError('')
+                }}
                 placeholder={placeholder}
                 required={required}
                 style={{
