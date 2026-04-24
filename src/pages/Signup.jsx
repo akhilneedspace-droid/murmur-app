@@ -59,7 +59,7 @@ if (phone && !/^\+61[0-9]{9}$/.test(phone)) {
           full_name: fullName.trim(),
           email: email.trim().toLowerCase(),
           phone: phone.trim() ? phone.trim() : null,
-          country: 'AU',
+      
           identity: identity ?? null,
         })
         setStep('otp')
@@ -101,7 +101,6 @@ if (phone && !/^\+61[0-9]{9}$/.test(phone)) {
           full_name: fullName.trim(),
           email: email.trim().toLowerCase(),
           phone: phone.trim() ? phone.trim() : null,
-          country: 'AU',
           identity: identity ?? null,
         }, { onConflict: 'id' })
       }
