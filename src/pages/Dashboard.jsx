@@ -9,7 +9,7 @@ import { getAIResponse } from '../lib/ai'
 function getGreeting() {
   const h = new Date().getHours()
   if (h >= 23 || h < 4)  return 'Still up? All okay?'
-  if (h >= 4  && h < 12) return 'Good mo'
+  if (h >= 4  && h < 12) return 'Good m'
   if (h >= 12 && h < 16) return 'Good afternoon'
   if (h >= 16 && h < 18) return 'Good evening'
   if (h >= 18 && h < 20) return 'Hope your evening is going great!'
@@ -450,7 +450,7 @@ function ExpresserView({ user, myProfile, onBack, onBrowseListeners, onSessionSt
 
   const ACK_DURATION_MS = 5000
   const AI_WAIT_SECS    = 10
-  const DAILY_POST_LIMIT = 3
+  const DAILY_POST_LIMIT = 10
 
   useEffect(() => { setTimeout(() => setVisible(true), 80) }, [])
 
@@ -615,7 +615,7 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   const [showBurnoutBlock, setShowBurnoutBlock] = useState(false)
 
   const DAILY_LISTEN_NUDGE  = 3
-  const DAILY_LISTEN_LIMIT  = 5
+  const DAILY_LISTEN_LIMIT  = 10
 
   useEffect(() => { setTimeout(() => setVisible(true), 80) }, [])
 
