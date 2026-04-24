@@ -20,7 +20,7 @@ export default function Welcome() {
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', border: '1px solid rgba(139,124,246,0.25)', borderRadius: 20, background: 'rgba(139,124,246,0.08)' }}>
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', animation: 'pulse 2s infinite' }} />
           <span style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 500, letterSpacing: '0.04em' }}>
-            Quiet space. Real f.
+            Quiet space. Real.
           </span>
         </div>
       </div>

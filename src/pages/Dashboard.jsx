@@ -10,7 +10,7 @@ function getGreeting() {
   const h = new Date().getHours()
   if (h >= 23 || h < 4)  return 'Still up? All okay?'
   if (h >= 4  && h < 12) return 'Good'
-  if (h >= 12 && h < 16) return 'Good af'
+  if (h >= 12 && h < 16) return 'Good a'
   if (h >= 16 && h < 18) return 'Good evening'
   if (h >= 18 && h < 20) return 'Hope your evening is going great!'
   return "Don't forget to sleep on time. Good night."
@@ -224,11 +224,12 @@ export default function Dashboard() {
       try {
         const msgs = JSON.parse(stored)
         if (!msgs || msgs.length === 0) continue // only opening msg, user never replied //chatgpt try
+        const isEnded = localStorage.getItem(`seed_msgs_${user.id}_${post.id}_ended`) === 'true'
         seedEntries.push({
           id: `seed-${post.id}`,
           is_seed: true,
           is_ai: true,
-          status: 'active',
+          status: isEnded ? 'closed' : 'active',
           expresser_id: 'ai',
           listener_id: user.id,
           created_at: msgs[msgs.length - 1]?.created_at ?? new Date().toISOString(),
@@ -504,7 +505,7 @@ function ExpresserView({ user, myProfile, onBack, onBrowseListeners, onSessionSt
   }
 
 
-  const TAGS = ['anxious', 'Happy','overwhelmed', 'sad', 'angry', 'confused', 'numb', 'grateful', 'venting']
+  const TAGS = ['anxious', 'happy','overwhelmed', 'sad', 'angry', 'confused', 'numb', 'grateful', 'venting']
 
   if (rateLimited) {
     return (
@@ -1245,7 +1246,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
   }
 
   async function handleEndChat() {
-    if (!isAIChat && sessionId) {
+    if (sessionId && !String(sessionId).startsWith('seed-')) {
       await supabase.from('sessions').update({ status: 'closed' }).eq('id', sessionId)
       // Prefix with __system__: so receiver renders it as a notice not a bubble
       // Using currentUserId (not 'system') so Supabase RLS allows the insert
@@ -1259,6 +1260,17 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       })
     }
     setSessionClosed(true)
+    // Mark seed chats as ended in localStorage
+    if (isSeedSession && String(sessionId).startsWith('seed-')) {
+      const pid = String(sessionId).replace('seed-', '')
+      try {
+        const stored = localStorage.getItem(`seed_msgs_${currentUserId}_${pid}`)
+        if (stored) {
+          const msgs = JSON.parse(stored)
+          localStorage.setItem(`seed_msgs_${currentUserId}_${pid}_ended`, 'true')
+        }
+      } catch {}
+    }
     if (isExpresser) { setShowRating(true) } else if (hasInteracted) { setEnded(true) } else { onEnd?.() }
   }
 
