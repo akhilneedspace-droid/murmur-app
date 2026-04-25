@@ -9,10 +9,10 @@ function getGreeting() {
   const h = new Date().getHours()
   if (h >= 23 || h < 4)  return 'Still up? All okay?'
   if (h >= 4  && h < 12) return 'Good mornin'
-  if (h >= 12 && h < 16) return 'Good afternoon'
+  if (h >= 12 && h < 16) return 'Good noon'
   if (h >= 16 && h < 18) return 'Good evening'
   if (h >= 18 && h < 20) return 'Hope your evening is going great!'
-  return "Don't forget to sleep on time. Good night."
+  return "Don't forget to sleep on time. Good."
 }
 
 function getFilledStars(count) {
@@ -922,13 +922,13 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
         if (greetSid) {
           const { error: e1 } = await supabase.from('messages').insert({ session_id: greetSid, sender_id: currentUserId, content: postText })
           if (e1) console.error('Opening post save failed:', e1)
-          const { error: e2 } = await supabase.from('messages').insert({ session_id: greetSid, sender_id: currentUserId, content: aiText, is_ai_msg: true })
+          const { error: e2 } = await supabase.from('messages').insert({ session_id: greetSid, sender_id: 'other', content: aiText, is_ai_msg: true })
           if (e2) console.error('AI greeting save failed:', e2)
         }
       } else {
         setMessages(m => [...m, aiMsg])
         if (greetSid) {
-          const { error } = await supabase.from('messages').insert({ session_id: greetSid, sender_id: currentUserId, content: aiText, is_ai_msg: true })
+          const { error } = await supabase.from('messages').insert({ session_id: greetSid, sender_id: 'other', content: aiText, is_ai_msg: true })
           if (error) console.error('AI greeting save failed:', error)
         }
       }
@@ -1018,7 +1018,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
               // Save all messages so far
               for (const m of withAI) {
                 if (String(m.id).startsWith('seed-init-') || String(m.id).startsWith('pending')) continue
-                await supabase.from('messages').insert({ session_id: realSession.id, sender_id: currentUserId, content: m.content, is_ai_msg: m.is_ai_msg ?? false })
+                await supabase.from('messages').insert({ session_id: realSession.id, sender_id: m.is_ai_msg ? 'other' : currentUserId, content: m.content, is_ai_msg: m.is_ai_msg ?? false })
               }
             }
           }
@@ -1028,7 +1028,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
         // For real AI sessions, save each message pair
         const { error: e1 } = await supabase.from('messages').insert({ session_id: activeSid, sender_id: currentUserId, content })
         if (e1) console.error('User msg save failed:', e1)
-        const { error: e2 } = await supabase.from('messages').insert({ session_id: activeSid, sender_id: currentUserId, content: aiText, is_ai_msg: true })
+        const { error: e2 } = await supabase.from('messages').insert({ session_id: activeSid, sender_id: 'other', content: aiText, is_ai_msg: true })
         if (e2) console.error('AI msg save failed:', e2)
       }
       // Also persist to localStorage as fallback
