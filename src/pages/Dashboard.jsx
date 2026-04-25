@@ -817,6 +817,13 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
 
   const isAIChat = isSeedSession || isAISession
   const TYPING_REVEAL_MS = 3000
+  function normalizeMessage(m) {
+  return {
+    ...m,
+    sender_id: m.sender_id ?? 'other',
+    is_ai_msg: !!m.is_ai_msg
+  }
+}
 
   useEffect(() => { setSessionId(initialSessionId) }, [initialSessionId])
 
@@ -872,7 +879,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       const { data: s } = await supabase.from('sessions').select('status').eq('id', sessionId).single()
       if (s?.status === 'closed') setSessionClosed(true)
       const { data } = await supabase.from('messages').select('*').eq('session_id', sessionId).order('created_at', { ascending: true })
-      const msgs = data || []
+      const msgs =  (data || []).map(normalizeMessage) //chatgpt
       msgs.forEach(m => seenIds.current.add(m.id))
       if (msgs.some(m => m.content?.startsWith('__system__:'))) setSessionClosed(true)
       setMessages(msgs)
@@ -912,7 +919,13 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       setOtherTyping(true)
       await new Promise(r => setTimeout(r, 1500 + Math.random() * 1000))
       setOtherTyping(false)
-      const aiMsg = { id: `ai-open-${Date.now()}`, sender_id: 'other', content: aiText, is_ai_msg: true, created_at: new Date().toISOString() }
+const aiMsg = normalizeMessage({
+  id: `ai-${Date.now()}`,
+  sender_id: 'other',
+  content: aiText,
+  is_ai_msg: true,
+  created_at: new Date().toISOString()
+})
       seenIds.current.add(aiMsg.id)
       const greetSid = !String(sessionId).startsWith('seed-') ? sessionId : null
       if (messages.length === 0) {
@@ -941,11 +954,36 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
     const ch = supabase.channel(`chat-${sessionId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `session_id=eq.${sessionId}` },
         (payload) => {
-          const msg = payload.new
+          const msg = normalizeMessage(payload.new) //chatgpt
           if (seenIds.current.has(msg.id)) return
           seenIds.current.add(msg.id)
           if (msg.content?.startsWith('__system__:')) { setSessionClosed(true); setMessages(m => m.find(x => x.id === msg.id) ? m : [...m, msg]); return }
-          if (msg.sender_id === currentUserId) { setMessages(m => m.find(x => x.id === msg.id) ? m : [...m, msg]); return }
+         // system message
+if (msg.content?.startsWith('__system__:')) {
+  setSessionClosed(true)
+  setMessages(m => m.find(x => x.id === msg.id) ? m : [...m, msg])
+  return
+}
+
+// AI message → ALWAYS treat as "other"
+if (msg.is_ai_msg) {
+  setMessages(m => m.find(x => x.id === msg.id) ? m : [...m, msg])
+  return
+}
+
+// your own message
+if (msg.sender_id === currentUserId) {
+  setMessages(m => m.find(x => x.id === msg.id) ? m : [...m, msg])
+  return
+}
+
+// other human → show typing delay
+setOtherTyping(true)
+clearTimeout(pendingTimer.current)
+pendingTimer.current = setTimeout(() => {
+  setOtherTyping(false)
+  setMessages(m => m.find(x => x.id === msg.id) ? m : [...m, msg])
+}, TYPING_REVEAL_MS)
           setOtherTyping(true)
           clearTimeout(pendingTimer.current)
           pendingTimer.current = setTimeout(() => {
@@ -976,7 +1014,12 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
     if (!input.trim() || aiThinking) return
     const content = input.trim(); setInput(''); setHasInteracted(true)
     const tempId = `temp-${Date.now()}`
-    const myMsg = { id: tempId, sender_id: currentUserId, content, created_at: new Date().toISOString() }
+const myMsg = normalizeMessage({
+  id: tempId,
+  sender_id: currentUserId,
+  content,
+  created_at: new Date().toISOString()
+})
     seenIds.current.add(tempId)
     const updated = [...messages, myMsg]; setMessages(updated)
 
@@ -993,7 +1036,13 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       setOtherTyping(true)
       await new Promise(r => setTimeout(r, 1500 + Math.random() * 1500))
       setOtherTyping(false)
-      const aiMsg = { id: `ai-${Date.now()}`, sender_id: 'other', content: aiText, is_ai_msg: true, created_at: new Date().toISOString() }
+const aiMsg = normalizeMessage({
+  id: `ai-${Date.now()}`,
+  sender_id: 'other',
+  content: aiText,
+  is_ai_msg: true,
+  created_at: new Date().toISOString()
+})
       const withAI = [...updated, aiMsg]
       setMessages(withAI)
 
@@ -1141,7 +1190,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
                 </div>
               )
             }
-            const isMine = msg.sender_id === currentUserId && !msg.is_ai_msg
+            const isMine = msg.sender_id === currentUserId
             return (
               <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: isMine ? 'flex-end' : 'flex-start', gap: 4 }}>
                 {!isMine && <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}><Avatar url={otherAvatar} name={otherName} size={22} /><span style={{ fontSize: 11, color: 'rgba(240,239,232,0.5)' }}>{otherName}</span></div>}
