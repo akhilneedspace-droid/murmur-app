@@ -12,7 +12,7 @@ function getGreeting() {
   if (h >= 12 && h < 16) return 'Good noon'
   if (h >= 16 && h < 18) return 'Good evening'
   if (h >= 18 && h < 20) return 'Hope your evening is going great!'
-  return "Don't forget to sleep on time."
+  return "Don't forget to sleep o"
 }
 
 function getFilledStars(count) {
@@ -954,15 +954,16 @@ function ChatView({
       <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
         {loading && <p>Loading...</p>}
 
-        {messages.map(msg => {
-          const mine = isMine(msg)
+       {messages.map(msg => {
+          const isMine = msg.sender_id === currentUserId && !msg.is_ai_msg
+          const isAI = msg.is_ai_msg === true
 
           return (
             <div
               key={msg.id}
               style={{
                 display: 'flex',
-                justifyContent: mine ? 'flex-end' : 'flex-start',
+                justifyContent: isMine ? 'flex-end' : 'flex-start',
                 marginBottom: 10
               }}
             >
@@ -971,7 +972,7 @@ function ChatView({
                   maxWidth: '70%',
                   padding: 12,
                   borderRadius: 16,
-                  background: mine ? '#6c5ce7' : '#2d3436',
+                  background: isMine ? '#6c5ce7' : '#2d3436',
                   color: '#fff'
                 }}
               >
