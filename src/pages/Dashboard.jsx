@@ -651,13 +651,14 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
 
   async function handleSelectPost(post) {
     if (todayListenerCount >= DAILY_LISTEN_LIMIT) { setShowBurnoutBlock(true); return }
-    if (post.is_seed) 
-      { // 1. Create a real session in Supabase for the AI chat
+    if (post.is_seed) {
+      console.log("Attempting to create AI session for post:", post.id);
+
       const { data: newSession, error } = await supabase
         .from('sessions')
         .insert({
           post_id: post.id,
-          expresser_id: '00000000-0000-0000-0000-000000000001', // AI Profile ID
+          expresser_id: '00000000-0000-0000-0000-000000000001',
           listener_id: user.id,
           status: 'active'
         })
@@ -665,11 +666,11 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
         .single()
 
       if (error) {
-        console.error("Error creating AI session:", error)
-        // Fallback to memory if DB fails
+        // THIS IS THE CRITICAL LOG
+        console.error("SUPABASE SESSION ERROR:", error.message, error.details, error.hint);
         setActiveSession({ id: `seed-${post.id}`, is_seed: true, post })
       } else {
-        // 2. Use the REAL Database ID so it shows up in "Your Conversations"
+        console.log("SUCCESS! Session created with ID:", newSession.id);
         setActiveSession({ id: newSession.id, is_seed: true, post })
       }
       
