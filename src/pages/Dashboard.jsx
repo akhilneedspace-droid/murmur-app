@@ -8,7 +8,7 @@ import { getAIResponse } from '../lib/ai'
 // ── Greeting ───────────────────────────────────────────────────
 function getGreeting() {
   const h = new Date().getHours()
-  if (h >= 23 || h < 4)  return 'Still up? All o'
+  if (h >= 23 || h < 4)  return 'Still up? A'
   if (h >= 4  && h < 12) return 'Good'
   if (h >= 12 && h < 16) return 'Good af'
   if (h >= 16 && h < 18) return 'Good n'
