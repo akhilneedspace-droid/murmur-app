@@ -1231,7 +1231,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       const withAI = [...updated, aiMsg]
       setMessages(withAI)
       // Save messages to DB — use currentUserId for both so RLS passes; is_ai_msg marks AI
-      const sid = !String(sessionId).startsWith('seed-') ? sessionId : null
+      const sid = sessionId
       if (sid) {
         const { error: e1 } = await supabase.from('messages').insert({ session_id: sid, sender_id: currentUserId, content })
         if (e1) console.error('User msg save failed:', e1)
