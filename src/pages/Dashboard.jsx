@@ -5,16 +5,18 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getAIResponse } from '../lib/ai'
 
+// ── Greeting ───────────────────────────────────────────────────
 function getGreeting() {
   const h = new Date().getHours()
   if (h >= 23 || h < 4)  return 'Still up? All okay?'
-  if (h >= 4  && h < 12) return 'Good mornin'
-  if (h >= 12 && h < 16) return 'Good aftern'
-  if (h >= 16 && h < 18) return 'Good even'
+  if (h >= 4  && h < 12) return 'Good'
+  if (h >= 12 && h < 16) return 'Good af'
+  if (h >= 16 && h < 18) return 'Good ing'
   if (h >= 18 && h < 20) return 'Hope your evening is going great!'
   return "Don't forget to sleep on time. Good night."
 }
 
+// ── Stars ──────────────────────────────────────────────────────
 function getFilledStars(count) {
   if (count >= 10) return 3
   if (count >= 4)  return 2
@@ -26,10 +28,17 @@ function ListenerStars({ count }) {
   const [hovered, setHovered] = useState(false)
   if (count < 1) return null
   const filled = getFilledStars(count)
-  const title = filled === 3 ? "You're a Rockstar 💫" : filled === 2 ? "You're a Superstar 🌟" : "You're a Star ✨"
-  const progress = count < 4 ? `${4 - count} more listen${4 - count === 1 ? '' : 's'} to reach Superstar`
+
+  // One label per tier, no contradictions
+  const title = filled === 3 ? "You're a Rockstar 💫"
+               : filled === 2 ? "You're a Superstar 🌟"
+               : "You're a Star ✨"
+
+  // Progress toward next tier, or max message
+  const progress = count < 4  ? `${4 - count} more listen${4 - count === 1 ? '' : 's'} to reach Superstar`
                  : count < 10 ? `${10 - count} more listen${10 - count === 1 ? '' : 's'} to reach Rockstar`
                  : 'You are at the top — thank you 🏆'
+
   return (
     <div onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
       style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginTop: 4, cursor: 'default', position: 'relative' }}>
@@ -58,6 +67,7 @@ const SEED_POSTS = [
 ]
 
 const seedChatStore = {}
+// Journal queue helpers using sessionStorage (survives component remounts)
 function queueJournal(postId, item) {
   try { const k = `jq_${postId}`; const q = JSON.parse(sessionStorage.getItem(k)||'[]'); q.push(item); sessionStorage.setItem(k, JSON.stringify(q)) } catch {}
 }
@@ -73,6 +83,7 @@ const EMOJI_GROUPS = [
   ['🙏','💪','🤝','👋','✨','🌱','🌊','🌙','☀️','🕊️'],
 ]
 
+// ── Portal Modal ───────────────────────────────────────────────
 function Modal({ title, body, primaryLabel, primaryAction, secondaryLabel, secondaryAction, danger }) {
   return createPortal(
     <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 24px' }}>
@@ -121,6 +132,7 @@ function RatingScreen({ onSubmit, onSkip }) {
   )
 }
 
+// ── Main Dashboard ─────────────────────────────────────────────
 export default function Dashboard() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -128,11 +140,11 @@ export default function Dashboard() {
   const [profile, setProfile] = useState(null)
   const [visible, setVisible] = useState(false)
   const [activeExpresserSessions, setActiveExpresserSessions] = useState([])
-  const [activeExpresserPost, setActiveExpresserPost] = useState(null)
-  const [siblingsSessions, setSiblingsSessions] = useState([])
-  const [currentListenerSession, setCurrentListenerSession] = useState(null)
-  const currentListenerSessionRef = useRef(null)
-  const [newListenerNotif, setNewListenerNotif] = useState(null)
+  const [activeExpresserPost, setActiveExpresserPost] = useState(null) // post content for AI context
+  const [siblingsSessions, setSiblingsSessions] = useState([]) // all sessions for selected chat's post // multi-listener: array
+  const [currentListenerSession, setCurrentListenerSession] = useState(null) // which listener expresser is chatting with
+  const currentListenerSessionRef = useRef(null) // ref to avoid stale closure in realtime listener
+  const [newListenerNotif, setNewListenerNotif] = useState(null) // notification when new listener joins
   const [listenerCount, setListenerCount] = useState(0)
   const [todayListenerCount, setTodayListenerCount] = useState(0)
   const [pastChats, setPastChats] = useState([])
@@ -141,8 +153,14 @@ export default function Dashboard() {
   const [showResumeModal, setShowResumeModal] = useState(false)
 
   useEffect(() => { setTimeout(() => setVisible(true), 100) }, [])
-  useEffect(() => { if (!user) return; loadProfile(); loadListenerCount(); fetchPastChats() }, [user])
-  useEffect(() => { currentListenerSessionRef.current = currentListenerSession }, [currentListenerSession])
+
+  useEffect(() => {
+    if (!user) return
+    loadProfile()
+    loadListenerCount()
+    loadSeedChats() // chatgpt try
+    fetchPastChats()
+  }, [user])
 
   async function loadProfile() {
     const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
@@ -158,55 +176,92 @@ export default function Dashboard() {
   }
 
   async function fetchPastChats() {
+    const AI_EXPRESSER_ID = '00000000-0000-0000-0000-000000000001'
     const { data: sessions } = await supabase
       .from('sessions')
       .select('*, posts(content, emotion_tag, is_anonymous, user_id, id)')
       .or(`expresser_id.eq.${user.id},listener_id.eq.${user.id}`)
       .order('created_at', { ascending: false })
+
     if (!sessions) { setPastChats([]); return }
-    const enriched = await Promise.all(sessions.map(async (session) => {
-      // AI seed sessions stored in DB: expresser_id = listener_id = user.id, is_ai = true
-      // These show as "You listened" with AI as expresser
-      const isAISeedDB = session.is_ai && session.expresser_id === user.id && session.listener_id === user.id
-      if (isAISeedDB) {
-        const seedPost = SEED_POSTS.find(p => session.posts?.content === p.content)
-        return {
-          ...session,
-          is_seed: true,
-          otherProfile: { full_name: seedPost?.profiles?.full_name ?? 'AI', avatar_url: null }
+
+    const enriched = await Promise.all(
+      sessions.map(async (session) => {
+        // AI seed sessions: expresser is the placeholder AI ID
+        if (session.expresser_id === AI_EXPRESSER_ID) {
+          return { ...session, otherProfile: { full_name: 'AI Listener', avatar_url: null }, is_ai_seed: true }
         }
-      }
-      const otherId = session.expresser_id === user.id ? session.listener_id : session.expresser_id
-      let otherProfile = null
-      if (otherId) {
-        const { data } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', otherId).single()
-        otherProfile = data ?? null
-      }
-      return { ...session, otherProfile }
-    }))
-    setPastChats(enriched.filter(s => !s.deleted_by || !Array.isArray(s.deleted_by) || !s.deleted_by.includes(user.id)))
+        const otherId = session.expresser_id === user.id ? session.listener_id : session.expresser_id
+        let otherProfile = null
+        if (otherId && otherId !== AI_EXPRESSER_ID) {
+          const { data } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', otherId).single()
+          otherProfile = data ?? null
+        }
+        return { ...session, otherProfile }
+      })
+    )
+
+    //setPastChats(enriched.filter(s => !s.deleted_by || !Array.isArray(s.deleted_by) || !s.deleted_by.includes(user.id))) chatgpt try
+    setPastChats(prev => {
+  const cleaned = enriched.filter(s =>
+    !s.deleted_by || !Array.isArray(s.deleted_by) || !s.deleted_by.includes(user.id)
+  )
+
+  // keep existing seed chats
+  const existingIds = new Set(cleaned.map(c => c.id))
+  const merged = [...cleaned, ...prev.filter(c => c.is_seed && !existingIds.has(c.id))]
+
+  return merged
+})
+  }
+
+  // Load seed chats from localStorage and add to pastChats
+  function loadSeedChats() {
+    const seedEntries = []
+    for (const post of SEED_POSTS) {
+      const stored = localStorage.getItem(`seed_msgs_${user.id}_${post.id}`) //chatgpt try
+      if (!stored) continue
+      try {
+        const msgs = JSON.parse(stored)
+        if (!msgs || msgs.length === 0) continue // only opening msg, user never replied //chatgpt try
+        seedEntries.push({
+          id: `seed-${post.id}`,
+          is_seed: true,
+          is_ai: true,
+          status: 'active',
+          expresser_id: 'ai',
+          listener_id: user.id,
+          created_at: msgs[msgs.length - 1]?.created_at ?? new Date().toISOString(),
+          posts: { content: post.content, emotion_tag: post.emotion_tag, is_anonymous: false, user_id: 'ai', id: post.id },
+          otherProfile: { full_name: post.profiles?.full_name ?? 'AI', avatar_url: null }
+        })
+      } catch {}
+    }
+    if (seedEntries.length > 0) {
+      setPastChats(prev => {
+        const ids = new Set(prev.map(c => c.id))
+        const fresh = seedEntries.filter(e => !ids.has(e.id))
+        return [...prev, ...fresh]
+      })
+    }
   }
 
   async function deleteChat(sessionId) {
-    // For seed chats stored only in localStorage (no real DB session)
-    if (String(sessionId).startsWith('seed-')) {
-      const pid = String(sessionId).replace('seed-', '')
-      try { localStorage.removeItem(`seed_msgs_${pid}`) } catch {}
-      setPastChats(prev => prev.filter(c => c.id !== sessionId))
-      return
-    }
     const { data: session } = await supabase.from('sessions').select('deleted_by').eq('id', sessionId).single()
     const existing = Array.isArray(session?.deleted_by) ? session.deleted_by : []
-    await supabase.from('sessions').update({ deleted_by: [...new Set([...existing, user.id])] }).eq('id', sessionId)
+    const updated = [...new Set([...existing, user.id])]
+    await supabase.from('sessions').update({ deleted_by: updated }).eq('id', sessionId)
     setPastChats(prev => prev.filter(c => c.id !== sessionId))
   }
 
+  // Real-time: listen for NEW listeners joining expresser's posts
   useEffect(() => {
     if (!user) return
     const ch = supabase.channel('my-sessions')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'sessions', filter: `expresser_id=eq.${user.id}` },
         async (payload) => {
           const newSession = payload.new
+          // Fetch listener's name for the FAB
           let listenerName = 'Listener'
           if (newSession.listener_id) {
             const { data: p } = await supabase.from('profiles').select('full_name').eq('id', newSession.listener_id).single()
@@ -222,21 +277,31 @@ export default function Dashboard() {
         })
       .subscribe()
     return () => supabase.removeChannel(ch)
-  }, [user])
+  }, [user]) // intentionally no currentListenerSession dep — using ref instead
 
+  // Keep ref in sync with state (avoids stale closure in realtime listener)
+  useEffect(() => { currentListenerSessionRef.current = currentListenerSession }, [currentListenerSession])
+
+  // Session timeout: close inactive sessions every 5 minutes
   useEffect(() => {
     if (!user) return
-    const iv = setInterval(() => supabase.rpc('close_inactive_sessions'), 5 * 60 * 1000)
+    const iv = setInterval(async () => {
+      await supabase.rpc('close_inactive_sessions')
+    }, 5 * 60 * 1000)
     return () => clearInterval(iv)
   }, [user])
 
+  // If expresser got first session and no current chat, open it
   useEffect(() => {
     if (activeExpresserSessions.length === 1 && !currentListenerSession) {
       setCurrentListenerSession(activeExpresserSessions[0])
+      // If browsing listener stories while waiting, bring them back to their chat
       if (view === 'listener') setView('home')
     }
   }, [activeExpresserSessions])
 
+  // Show chat if: expresser has a session AND not actively in listener view
+  // Exception: always show if it's an AI session (so wait screen transitions work)
   if (currentListenerSession && (view !== 'listener' || currentListenerSession.is_ai)) {
     return (
       <ChatView
@@ -258,14 +323,16 @@ export default function Dashboard() {
   }
 
   if (view === 'expresser') return <ExpresserView user={user} myProfile={profile} onBack={() => setView('home')} onBrowseListeners={() => setView('listener')} onPostCreated={(p) => setActiveExpresserPost(p)} onSessionStart={s => { setActiveExpresserSessions([s]); setCurrentListenerSession(s) }} />
-  if (view === 'listener') return (
-    <ListenerView user={user} myProfile={profile} todayListenerCount={todayListenerCount}
-      onBack={(s, didInteract) => {
-        if (s?.id && didInteract && s.status !== 'closed') { setPendingListenerSession(s); setShowResumeModal(true) }
-        setView('home')
-      }}
-      onComplete={() => { fetchPastChats(); loadListenerCount() }} />
-  )
+  if (view === 'listener') return <ListenerView user={user} myProfile={profile} todayListenerCount={todayListenerCount}
+    onBack={(s, didInteract) => {
+      // Only show resume modal if: real session exists, listener sent at least one msg, and session still active
+      if (s?.id && didInteract && s.status !== 'closed') {
+        setPendingListenerSession(s)
+        setShowResumeModal(true)
+      }
+      setView('home')
+    }}
+    onComplete={() => { fetchPastChats(); loadListenerCount() }} />
   if (view === 'chats') return <PastChatsView chats={pastChats} userId={user?.id} onOpen={async c => { setSelectedChat(c); setView('chat-detail'); if (c.expresser_id === user?.id && c.posts?.id) { const { data } = await supabase.from('sessions').select('*').eq('post_id', c.posts.id); setSiblingsSessions(data || []) } }} onDelete={deleteChat} onBack={() => { fetchPastChats(); setView('home') }} />
   if (view === 'chat-detail' && selectedChat) {
     const isExp = selectedChat.expresser_id === user?.id
@@ -289,17 +356,26 @@ export default function Dashboard() {
 
   const firstName = profile?.full_name?.split(' ')[0] ?? ''
 
+  // Group past chats by post for expresser
+  const myPosts = pastChats.filter(c => c.expresser_id === user?.id)
+  const groupedByPost = myPosts.reduce((acc, chat) => {
+    const key = chat.posts?.id ?? chat.id
+    if (!acc[key]) acc[key] = { post: chat.posts, sessions: [] }
+    acc[key].sessions.push(chat)
+    return acc
+  }, {})
+  const groupedPostCount = Object.keys(groupedByPost).length
+
   return (
     <div className="page" style={{ padding: '0 24px', justifyContent: 'flex-start' }}>
       <div className="orb" style={{ width: 380, height: 380, background: 'radial-gradient(circle, rgba(139,124,246,0.10) 0%, transparent 70%)', top: '-60px', right: '-80px' }} />
       <div className="orb" style={{ width: 260, height: 260, background: 'radial-gradient(circle, rgba(93,202,165,0.08) 0%, transparent 70%)', bottom: '160px', left: '-60px' }} />
 
       {showResumeModal && pendingListenerSession && (
-        <Modal title="You have an ongoing conversation" body="It looks like you stepped away from a chat. Would you like to continue where you left off?"
-          primaryLabel="Continue conversation" primaryAction={() => { setShowResumeModal(false); setSelectedChat(pendingListenerSession); setView('chat-detail') }}
-          secondaryLabel="Leave it for now" secondaryAction={() => { setShowResumeModal(false); setPendingListenerSession(null) }} />
+        <Modal title="You have an ongoing conversation" body="It looks like you stepped away from a chat. Would you like to continue where you left off?" primaryLabel="Continue conversation" primaryAction={() => { setShowResumeModal(false); setSelectedChat(pendingListenerSession); setView('chat-detail') }} secondaryLabel="Leave it for now" secondaryAction={() => { setShowResumeModal(false); setPendingListenerSession(null) }} />
       )}
 
+      {/* Header */}
       <div style={{ position: 'relative', zIndex: 1, paddingTop: 52, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28, opacity: visible ? 1 : 0, transition: 'opacity 0.5s ease' }}>
         <div>
           <p style={{ fontSize: 13, color: 'rgba(240,239,232,0.55)', marginBottom: 2 }}>{getGreeting()}</p>
@@ -311,6 +387,7 @@ export default function Dashboard() {
         </button>
       </div>
 
+      {/* Active listener sessions notification for expresser */}
       {activeExpresserSessions.length > 1 && (
         <div style={{ position: 'relative', zIndex: 1, marginBottom: 16, padding: '14px 18px', background: 'rgba(93,202,165,0.08)', border: '1px solid rgba(93,202,165,0.25)', borderRadius: 'var(--radius)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <p style={{ fontSize: 14, color: 'var(--teal)' }}>💬 {activeExpresserSessions.length} people are here for you</p>
@@ -318,18 +395,29 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Role cards */}
       <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: 12, opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(16px)', transition: 'opacity 0.6s ease 0.15s, transform 0.6s ease 0.15s' }}>
         <div style={{ marginBottom: 4 }}>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(24px, 6vw, 30px)', fontWeight: 400, letterSpacing: '-0.02em', lineHeight: 1.2, marginBottom: 6, color: 'var(--text)' }}>How do you want to show up today?</h1>
           <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.55)' }}>You can switch roles at any time.</p>
         </div>
-        <RoleCard role="Expresser" title="Yes, I want to share my feelings" description="Write what's on your mind - thoughts, feelings, anything." color="var(--accent)" hoverBorder="rgba(139,124,246,0.4)" hoverBg="var(--accent-glow)" onClick={() => setView('expresser')} />
-        <RoleCard role="Listener" title="I want to be there for someone" description="Browse what people are sharing. Pick one and listen with care." color="var(--teal)" hoverBorder="rgba(93,202,165,0.4)" hoverBg="rgba(93,202,165,0.05)" onClick={() => setView('listener')} />
+
+        <RoleCard role="Expresser" title="Yes, I want to share my feelings"
+          description="Write what's on your mind - thoughts, feelings, anything."
+          color="var(--accent)" hoverBorder="rgba(139,124,246,0.4)" hoverBg="var(--accent-glow)" onClick={() => setView('expresser')} />
+
+        <RoleCard role="Listener" title="I want to be there for someone"
+          description="Browse what people are sharing. Pick one and listen with care."
+          color="var(--teal)" hoverBorder="rgba(93,202,165,0.4)" hoverBg="rgba(93,202,165,0.05)" onClick={() => setView('listener')} />
+
         <button onClick={() => { fetchPastChats(); setView('chats') }} style={{ width: '100%', textAlign: 'left', padding: '16px 20px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'border-color var(--transition)' }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)'}
+          onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
           <div>
             <p style={{ fontSize: 15, fontWeight: 500, color: 'var(--text)', marginBottom: 2 }}>Your conversations</p>
-            <p style={{ fontSize: 13, color: 'rgba(240,239,232,0.5)' }}>{pastChats.length > 0 ? `${pastChats.length} past ${pastChats.length === 1 ? 'chat' : 'chats'}` : 'No conversations yet'}</p>
+            <p style={{ fontSize: 13, color: 'rgba(240,239,232,0.5)' }}>
+              {pastChats.length > 0 ? `${pastChats.length} past ${pastChats.length === 1 ? 'chat' : 'chats'}` : 'No conversations yet'}
+            </p>
           </div>
           <svg style={{ opacity: 0.4 }} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         </button>
@@ -356,6 +444,7 @@ function RoleCard({ role, title, description, color, hoverBorder, hoverBg, onCli
   )
 }
 
+// ── Expresser View ─────────────────────────────────────────────
 function ExpresserView({ user, myProfile, onBack, onBrowseListeners, onSessionStart, onPostCreated }) {
   const [text, setText] = useState('')
   const [anonymous, setAnonymous] = useState(false)
@@ -372,11 +461,12 @@ function ExpresserView({ user, myProfile, onBack, onBrowseListeners, onSessionSt
   const [rateLimited, setRateLimited] = useState(false)
 
   const ACK_DURATION_MS = 5000
-  const AI_WAIT_SECS = 15
+  const AI_WAIT_SECS    = 15
   const DAILY_POST_LIMIT = 10
 
   useEffect(() => { setTimeout(() => setVisible(true), 80) }, [])
 
+  // Check rate limit on mount
   useEffect(() => {
     async function checkLimit() {
       const today = new Date().toISOString().split('T')[0]
@@ -394,8 +484,11 @@ function ExpresserView({ user, myProfile, onBack, onBrowseListeners, onSessionSt
     return () => clearInterval(iv)
   }, [phase, aiJoining])
 
+  // Session joins handled by Dashboard realtime listener
+
   async function triggerAI() {
     setAiJoining(true)
+    // Just insert — Dashboard realtime listener handles opening the chat
     await supabase.from('sessions').insert({ post_id: postId, expresser_id: user.id, listener_id: null, status: 'active', is_ai: true })
   }
 
@@ -410,14 +503,17 @@ function ExpresserView({ user, myProfile, onBack, onBrowseListeners, onSessionSt
     } catch (err) { setError(err.message) } finally { setLoading(false) }
   }
 
-  const TAGS = ['anxious', 'happy', 'overwhelmed', 'sad', 'angry', 'confused', 'numb', 'grateful', 'venting']
+
+  const TAGS = ['anxious', 'happy','overwhelmed', 'sad', 'angry', 'confused', 'numb', 'grateful', 'venting']
 
   if (rateLimited) {
     return (
       <div className="page" style={{ padding: '0 28px', justifyContent: 'center', alignItems: 'center', gap: 24, textAlign: 'center' }}>
         <div style={{ fontSize: 48 }}>🌙</div>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 400, color: 'var(--accent)' }}>You've shared a lot today.</h2>
-        <p style={{ fontSize: 15, color: 'rgba(240,239,232,0.7)', lineHeight: 1.8, maxWidth: 300 }}>You've reached the limit of {DAILY_POST_LIMIT} posts for today. This isn't a punishment — it's a gentle reminder to rest. Your feelings will still be here tomorrow, and so will we.</p>
+        <p style={{ fontSize: 15, color: 'rgba(240,239,232,0.7)', lineHeight: 1.8, maxWidth: 300 }}>
+          You've reached the limit of {DAILY_POST_LIMIT} posts for today. This isn't a punishment — it's a gentle reminder to rest. Your feelings will still be here tomorrow, and so will we.
+        </p>
         <button className="btn-ghost" style={{ maxWidth: 280 }} onClick={onBack}>Back to home</button>
       </div>
     )
@@ -459,12 +555,14 @@ function ExpresserView({ user, myProfile, onBack, onBrowseListeners, onSessionSt
                 <div style={{ height: 3, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
                   <div style={{ height: '100%', width: `${pct}%`, background: 'var(--accent)', borderRadius: 2, transition: 'width 1s linear' }} />
                 </div>
-                <p style={{ fontSize: 13, color: 'rgba(240,239,232,0.5)', lineHeight: 1.6 }}></p>
+                <p style={{ fontSize: 13, color: 'rgba(240,239,232,0.5)', lineHeight: 1.6 }}></p>  
               </>
             )}
           </div>
+
+          {/* Browse while waiting */}
           <button onClick={onBrowseListeners} style={{ padding: '13px 20px', borderRadius: 'var(--radius)', background: 'transparent', border: '1px solid var(--border)', color: 'rgba(240,239,232,0.6)', fontSize: 14, cursor: 'pointer', textAlign: 'center', transition: 'border-color var(--transition)' }}
-            onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(51,137,199,0.5)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+            onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(51, 137, 199, 0.5)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
             Browse listener stories while you wait
           </button>
         </div>
@@ -518,6 +616,7 @@ function ExpresserView({ user, myProfile, onBack, onBrowseListeners, onSessionSt
   )
 }
 
+// ── Listener View ──────────────────────────────────────────────
 function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete }) {
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -527,8 +626,8 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   const [showBurnoutNudge, setShowBurnoutNudge] = useState(false)
   const [showBurnoutBlock, setShowBurnoutBlock] = useState(false)
 
-  const DAILY_LISTEN_NUDGE = 3
-  const DAILY_LISTEN_LIMIT = 10
+  const DAILY_LISTEN_NUDGE  = 3
+  const DAILY_LISTEN_LIMIT  = 10
 
   useEffect(() => { setTimeout(() => setVisible(true), 80) }, [])
 
@@ -548,36 +647,37 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   async function handleSelectPost(post) {
     if (todayListenerCount >= DAILY_LISTEN_LIMIT) { setShowBurnoutBlock(true); return }
     if (post.is_seed) {
-      // Check if we already have a DB session for this seed post
-      const { data: existingSession } = await supabase
-        .from('sessions')
-        .select('*')
-        .eq('listener_id', user.id)
-        .eq('expresser_id', user.id)
-        .eq('is_ai', true)
-        .order('created_at', { ascending: false })
-        .limit(20)
-      // Match by post content since seed posts don't have real post_ids
-      const matched = existingSession?.find(s => {
-        const storedKey = `seed_post_id_${s.id}`
-        return localStorage.getItem(storedKey) === post.id
-      })
-      if (matched) {
-        setActiveSession({ ...matched, is_seed: true, post })
-        setShowEndTip(false); return
+      // Seed posts use in-memory store — no DB session (post_id is not a real UUID)
+      // Restore from localStorage if returning to this seed chat
+      const storedKey = `seed_msgs_${post.id}`
+      const stored = localStorage.getItem(storedKey)
+      if (stored) {
+        try { seedChatStore[post.id] = JSON.parse(stored) } catch {}
       }
-      // New seed chat — use in-memory + localStorage, create DB session on first message
       if (!seedChatStore[post.id]) {
         seedChatStore[post.id] = [{ id: `seed-init-${post.id}`, sender_id: 'other', content: post.content, created_at: new Date().toISOString() }]
       }
-      setActiveSession({ id: `seed-${post.id}`, is_seed: true, post, seedPostId: post.id })
+      setActiveSession({ id: `seed-${post.id}`, is_seed: true, post })
       setShowEndTip(true); return
     }
     const { data: expresserProfile } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', post.user_id).single()
     const enrichedPost = { ...post, profiles: expresserProfile ?? post.profiles }
-    const { data: existing } = await supabase.from('sessions').select('*').eq('post_id', post.id).eq('listener_id', user.id).single()
-    if (existing) { setActiveSession({ ...existing, post: enrichedPost }); setShowEndTip(false); return }
-    setActiveSession({ id: null, post: enrichedPost, isPending: true }); setShowEndTip(true)
+
+    // Fix 5: Check if this listener already has a session for this post — reopen it instead of creating a duplicate
+    const { data: existing } = await supabase.from('sessions')
+      .select('*').eq('post_id', post.id).eq('listener_id', user.id).single()
+
+    if (existing) {
+      // Reopen the existing session
+      setActiveSession({ ...existing, post: enrichedPost })
+      setShowEndTip(false) // don't show tip again for returning listener
+      return
+    }
+
+    // Fix 3: Don't create session immediately — store post data and create on first message
+    // Store as a "pending" session with no DB record yet
+    setActiveSession({ id: null, post: enrichedPost, isPending: true })
+    setShowEndTip(true)
   }
 
   if (showBurnoutBlock) {
@@ -585,7 +685,9 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
       <div className="page" style={{ padding: '0 28px', justifyContent: 'center', alignItems: 'center', gap: 20, textAlign: 'center' }}>
         <div style={{ fontSize: 48 }}>🌿</div>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 400, color: 'var(--teal)' }}>You've given a lot today.</h2>
-        <p style={{ fontSize: 15, color: 'rgba(240,239,232,0.7)', lineHeight: 1.8, maxWidth: 300 }}>You've listened to {DAILY_LISTEN_LIMIT} people today — that's genuinely remarkable. Rest now. Come back tomorrow.</p>
+        <p style={{ fontSize: 15, color: 'rgba(240,239,232,0.7)', lineHeight: 1.8, maxWidth: 300 }}>
+          You've listened to {DAILY_LISTEN_LIMIT} people today — that's genuinely remarkable. Rest now. Your presence matters more when you're recharged. Come back tomorrow.
+        </p>
         <button className="btn-ghost" style={{ maxWidth: 280 }} onClick={() => onBack(null)}>Back to home</button>
       </div>
     )
@@ -593,7 +695,6 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
 
   if (activeSession) {
     return <ChatView
-      key={activeSession.id ?? `seed-${activeSession.seedPostId}`}
       sessionId={activeSession.id}
       isExpresser={false}
       isSeedSession={activeSession.is_seed}
@@ -603,6 +704,7 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
       showEndTip={showEndTip}
       onEndTipDismiss={() => setShowEndTip(false)}
       onBack={(didInteract) => {
+        // Only show resume modal for real (non-seed) sessions
         if (activeSession.is_seed) { onBack(null, false); return }
         onBack(activeSession, didInteract)
       }}
@@ -613,11 +715,19 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   return (
     <div className="page" style={{ padding: '0 24px', justifyContent: 'flex-start' }}>
       <div className="orb" style={{ width: 300, height: 300, background: 'radial-gradient(circle, rgba(93,202,165,0.08) 0%, transparent 70%)', top: '-40px', right: '-60px' }} />
+
+      {/* Burnout nudge after 3 sessions */}
       {showBurnoutNudge && (
-        <Modal title="You've been showing up a lot today 💙" body={`You've listened to ${todayListenerCount} people today. How are you doing? It's okay to rest.`}
-          primaryLabel="I'm okay, keep going" primaryAction={() => setShowBurnoutNudge(false)}
-          secondaryLabel="I'll rest for now" secondaryAction={() => onBack(null)} />
+        <Modal
+          title="You've been showing up a lot today 💙"
+          body={`You've listened to ${todayListenerCount} people today. How are you doing? It's okay to rest — you can come back to this tomorrow.`}
+          primaryLabel="I'm okay, keep going"
+          primaryAction={() => setShowBurnoutNudge(false)}
+          secondaryLabel="I'll rest for now"
+          secondaryAction={() => onBack(null)}
+        />
       )}
+
       <div style={{ position: 'relative', zIndex: 1, paddingTop: 52, marginBottom: 24 }}>
         <button onClick={() => onBack(null)} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'rgba(240,239,232,0.5)', fontSize: 14, marginBottom: 20, background: 'none', border: 'none', cursor: 'pointer' }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
@@ -626,6 +736,7 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 400, letterSpacing: '-0.01em', marginBottom: 6, color: 'var(--text)' }}>Someone needs a listener.</h2>
         <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.5)' }}>Choose one person to be present with. · {DAILY_LISTEN_LIMIT - todayListenerCount} sessions remaining today</p>
       </div>
+
       <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 48, opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(12px)', transition: 'opacity 0.4s ease, transform 0.4s ease' }}>
         {loading ? <div style={{ textAlign: 'center', padding: 40 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--teal)', display: 'inline-block', animation: 'pulse 1.2s infinite' }} /></div>
           : posts.map((post, idx) => <PostCard key={post.id} post={post} delay={idx * 0.06} onClick={() => handleSelectPost(post)} />)}
@@ -660,27 +771,50 @@ function PostCard({ post, delay, onClick }) {
 
 function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
   const [confirmDelete, setConfirmDelete] = useState(null)
+
+  // Date bucket label
   function dateBucket(isoStr) {
-    const diffDays = Math.floor((new Date() - new Date(isoStr)) / 86400000)
-    if (diffDays === 0) return 'Today'; if (diffDays === 1) return 'Yesterday'
-    if (diffDays < 7) return 'This week'; if (diffDays < 30) return 'This month'; return 'Earlier'
+    const d = new Date(isoStr)
+    const now = new Date()
+    const diffDays = Math.floor((now - d) / 86400000)
+    if (diffDays === 0) return 'Today'
+    if (diffDays === 1) return 'Yesterday'
+    if (diffDays < 7)  return 'This week'
+    if (diffDays < 30) return 'This month'
+    return 'Earlier'
   }
+
   const BUCKET_ORDER = ['Today', 'Yesterday', 'This week', 'This month', 'Earlier']
-  const myExpressions = chats.filter(c => c.expresser_id === userId && !c.is_seed)
-  const myListening = chats.filter(c => c.listener_id === userId && (c.expresser_id !== userId || c.is_seed))
-  const expressionGroups = Object.values(myExpressions.reduce((acc, chat) => {
-    const key = chat.posts?.id ?? chat.id
-    if (!acc[key]) acc[key] = { post: chat.posts, sessions: [], date: chat.created_at, id: key }
-    acc[key].sessions.push(chat)
-    if (new Date(chat.created_at) > new Date(acc[key].date)) acc[key].date = chat.created_at
-    return acc
-  }, {}))
+
+  // Flatten all chats into a unified list with role context
+  // For expresser chats: group sessions by post, show one row per post
+  const myExpressions = chats.filter(c => c.expresser_id === userId)
+  const myListening   = chats.filter(c => c.listener_id === userId)
+
+  // Group expressions by post
+  const expressionGroups = Object.values(
+    myExpressions.reduce((acc, chat) => {
+      const key = chat.posts?.id ?? chat.id
+      if (!acc[key]) acc[key] = { post: chat.posts, sessions: [], date: chat.created_at, id: key }
+      acc[key].sessions.push(chat)
+      // Use most recent session date for the group
+      if (new Date(chat.created_at) > new Date(acc[key].date)) acc[key].date = chat.created_at
+      return acc
+    }, {})
+  )
+
+  // Build unified rows: { type, date, data }
   const rows = [
     ...expressionGroups.map(g => ({ type: 'expression', date: g.date, data: g })),
     ...myListening.map(c => ({ type: 'listening', date: c.created_at, data: c })),
   ].sort((a, b) => new Date(b.date) - new Date(a.date))
+
+  // Group by date bucket
   const buckets = rows.reduce((acc, row) => {
-    const b = dateBucket(row.date); if (!acc[b]) acc[b] = []; acc[b].push(row); return acc
+    const b = dateBucket(row.date)
+    if (!acc[b]) acc[b] = []
+    acc[b].push(row)
+    return acc
   }, {})
 
   return (
@@ -693,6 +827,7 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 400, letterSpacing: '-0.01em', marginBottom: 6, color: 'var(--text)' }}>Your conversations</h2>
         <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.5)' }}>{rows.length} total · grouped by date</p>
       </div>
+
       {rows.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '48px 24px', color: 'rgba(240,239,232,0.4)' }}>
           <p style={{ fontSize: 32, marginBottom: 16 }}>◎</p>
@@ -703,43 +838,64 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 28, paddingBottom: 48 }}>
           {BUCKET_ORDER.filter(b => buckets[b]).map(bucket => (
             <div key={bucket}>
-              <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(240,239,232,0.35)', marginBottom: 10 }}>{bucket}</p>
+              {/* Date header */}
+              <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(240,239,232,0.35)', marginBottom: 10 }}>
+                {bucket}
+              </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {buckets[bucket].map(row => {
                   if (row.type === 'expression') {
+                    // Expression group card
                     const { post, sessions, id } = row.data
                     const hasActive = sessions.some(s => s.status === 'active')
                     const preview = post?.content?.slice(0, 100) ?? ''
+                    const listenerCount = sessions.length
                     return (
                       <div key={`exp-${id}`} style={{ padding: '14px 16px', background: 'var(--bg2)', border: `1px solid ${hasActive ? 'rgba(93,202,165,0.25)' : 'var(--border)'}`, borderRadius: 'var(--radius)' }}>
+                        {/* Header row */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--accent)' }}>You expressed</span>
-                            {hasActive && <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, background: 'rgba(93,202,165,0.15)', color: 'var(--teal)', fontWeight: 600, textTransform: 'uppercase' }}>Live</span>}
+                            {hasActive && <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, background: 'rgba(93,202,165,0.15)', color: 'var(--teal)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Live</span>}
                           </div>
                           {post?.emotion_tag && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: 'var(--bg3)', color: 'rgba(240,239,232,0.5)' }}>{post.emotion_tag}</span>}
                         </div>
-                        <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.75)', lineHeight: 1.6, marginBottom: 10 }}>"{preview}{preview.length === 100 ? '...' : ''}"</p>
+
+                        {/* Post preview */}
+                        <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.75)', lineHeight: 1.6, marginBottom: 10 }}>
+                          "{preview}{preview.length === 100 ? '...' : ''}"
+                        </p>
+
+                        {/* Listener sessions — each as a compact row */}
                         {sessions.length === 1 ? (
+                          // Single listener: just an "Open" button
                           <button onClick={() => onOpen(sessions[0])} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                             <span style={{ fontSize: 12, color: 'rgba(240,239,232,0.5)' }}>💬 1 listener ·</span>
                             <span style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'underline' }}>Open chat</span>
-                            <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, background: sessions[0].status === 'active' ? 'rgba(93,202,165,0.15)' : 'rgba(136,135,128,0.15)', color: sessions[0].status === 'active' ? 'var(--teal)' : 'rgba(240,239,232,0.4)', fontWeight: 600, textTransform: 'uppercase' }}>{sessions[0].status === 'active' ? 'Ongoing' : 'Ended'}</span>
-                            <button onClick={e => { e.stopPropagation(); setConfirmDelete(sessions[0].id) }} style={{ marginLeft: 'auto', color: 'rgba(240,239,232,0.25)', fontSize: 16, cursor: 'pointer', background: 'none', border: 'none' }} onMouseEnter={e => e.currentTarget.style.color = 'var(--coral)'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(240,239,232,0.25)'}>×</button>
+                            <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, background: sessions[0].status === 'active' ? 'rgba(93,202,165,0.15)' : 'rgba(136,135,128,0.15)', color: sessions[0].status === 'active' ? 'var(--teal)' : 'rgba(240,239,232,0.4)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                              {sessions[0].status === 'active' ? 'Ongoing' : 'Ended'}
+                            </span>
+                            <button onClick={e => { e.stopPropagation(); setConfirmDelete(sessions[0].id) }} style={{ marginLeft: 'auto', color: 'rgba(240,239,232,0.25)', fontSize: 16, cursor: 'pointer', background: 'none', border: 'none', lineHeight: 1 }}
+                              onMouseEnter={e => e.currentTarget.style.color = 'var(--coral)'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(240,239,232,0.25)'}>×</button>
                           </button>
                         ) : (
+                          // Multiple listeners: expandable list
                           <div>
-                            <p style={{ fontSize: 12, color: 'rgba(240,239,232,0.5)', marginBottom: 6 }}>💬 {sessions.length} listeners responded</p>
+                            <p style={{ fontSize: 12, color: 'rgba(240,239,232,0.5)', marginBottom: 6 }}>💬 {listenerCount} listeners responded</p>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                               {sessions.map((session, idx) => {
                                 const oName = session.otherProfile?.full_name?.split(' ')[0] ?? `Listener ${idx + 1}`
+                                const oAvatar = session.otherProfile?.avatar_url
                                 return (
                                   <div key={session.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'var(--bg3)', borderRadius: 8 }}>
-                                    <Avatar url={session.otherProfile?.avatar_url} name={oName} size={20} />
+                                    <Avatar url={oAvatar} name={oName} size={20} />
                                     <span style={{ fontSize: 13, color: 'rgba(240,239,232,0.7)', flex: 1 }}>{oName}</span>
-                                    <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, background: session.status === 'active' ? 'rgba(93,202,165,0.15)' : 'rgba(136,135,128,0.15)', color: session.status === 'active' ? 'var(--teal)' : 'rgba(240,239,232,0.4)', fontWeight: 600, textTransform: 'uppercase' }}>{session.status === 'active' ? 'Live' : 'Ended'}</span>
+                                    <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, background: session.status === 'active' ? 'rgba(93,202,165,0.15)' : 'rgba(136,135,128,0.15)', color: session.status === 'active' ? 'var(--teal)' : 'rgba(240,239,232,0.4)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                                      {session.status === 'active' ? 'Live' : 'Ended'}
+                                    </span>
                                     <button onClick={() => onOpen(session)} style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Open</button>
-                                    <button onClick={() => setConfirmDelete(session.id)} style={{ color: 'rgba(240,239,232,0.25)', fontSize: 14, cursor: 'pointer', background: 'none', border: 'none' }} onMouseEnter={e => e.currentTarget.style.color = 'var(--coral)'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(240,239,232,0.25)'}>×</button>
+                                    <button onClick={() => setConfirmDelete(session.id)} style={{ color: 'rgba(240,239,232,0.25)', fontSize: 14, cursor: 'pointer', background: 'none', border: 'none', lineHeight: 1 }}
+                                      onMouseEnter={e => e.currentTarget.style.color = 'var(--coral)'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(240,239,232,0.25)'}>×</button>
                                   </div>
                                 )
                               })}
@@ -749,25 +905,33 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
                       </div>
                     )
                   }
+
+                  // Listening card
                   const chat = row.data
                   const isOngoing = chat.status === 'active'
                   const preview = chat.posts?.content?.slice(0, 100) ?? ''
                   const isAnon = chat.posts?.is_anonymous
                   const otherName = isAnon ? 'Anonymous' : (chat.otherProfile?.full_name?.split(' ')[0] ?? 'Someone')
                   const otherAvatar = isAnon ? null : chat.otherProfile?.avatar_url
+
                   return (
                     <div key={`listen-${chat.id}`} style={{ padding: '14px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                       <button onClick={() => onOpen(chat)} style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                          <Avatar url={otherAvatar} name={otherName} size={24} />
-                          <span style={{ fontSize: 13, color: 'rgba(240,239,232,0.8)', fontWeight: 500 }}>{otherName}</span>
-                          <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--teal)' }}>You listened</span>
-                          <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, fontWeight: 600, background: isOngoing ? 'rgba(93,202,165,0.15)' : 'rgba(136,135,128,0.15)', color: isOngoing ? 'var(--teal)' : 'rgba(240,239,232,0.4)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>{isOngoing ? 'Live' : 'Ended'}</span>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <Avatar url={otherAvatar} name={otherName} size={24} />
+                            <span style={{ fontSize: 13, color: 'rgba(240,239,232,0.8)', fontWeight: 500 }}>{otherName}</span>
+                            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--teal)' }}>You listened</span>
+                            <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, fontWeight: 600, background: isOngoing ? 'rgba(93,202,165,0.15)' : 'rgba(136,135,128,0.15)', color: isOngoing ? 'var(--teal)' : 'rgba(240,239,232,0.4)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                              {isOngoing ? 'Live' : 'Ended'}
+                            </span>
+                          </div>
                         </div>
                         <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.7)', lineHeight: 1.6 }}>"{preview}{preview.length === 100 ? '...' : ''}"</p>
                         {chat.posts?.emotion_tag && <span style={{ display: 'inline-block', marginTop: 6, fontSize: 11, padding: '2px 8px', borderRadius: 6, background: 'var(--bg3)', color: 'var(--teal)' }}>{chat.posts.emotion_tag}</span>}
                       </button>
-                      <button onClick={() => setConfirmDelete(chat.id)} style={{ color: 'rgba(240,239,232,0.25)', fontSize: 20, cursor: 'pointer', flexShrink: 0, padding: 4, background: 'none', border: 'none' }} onMouseEnter={e => e.currentTarget.style.color = 'var(--coral)'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(240,239,232,0.25)'}>×</button>
+                      <button onClick={() => setConfirmDelete(chat.id)} style={{ color: 'rgba(240,239,232,0.25)', fontSize: 20, cursor: 'pointer', flexShrink: 0, padding: 4, background: 'none', border: 'none', lineHeight: 1 }}
+                        onMouseEnter={e => e.currentTarget.style.color = 'var(--coral)'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(240,239,232,0.25)'}>×</button>
                     </div>
                   )
                 })}
@@ -787,7 +951,8 @@ function EmojiPicker({ onSelect, onClose }) {
       {EMOJI_GROUPS.map((group, gi) => (
         <div key={gi} style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: gi < EMOJI_GROUPS.length - 1 ? 8 : 0 }}>
           {group.map(emoji => (
-            <button key={emoji} onClick={() => { onSelect(emoji); onClose() }} style={{ fontSize: 20, padding: 4, borderRadius: 6, background: 'transparent', cursor: 'pointer', border: 'none' }} onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>{emoji}</button>
+            <button key={emoji} onClick={() => { onSelect(emoji); onClose() }} style={{ fontSize: 20, padding: 4, borderRadius: 6, background: 'transparent', cursor: 'pointer', border: 'none' }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>{emoji}</button>
           ))}
         </div>
       ))}
@@ -795,8 +960,9 @@ function EmojiPicker({ onSelect, onClose }) {
   )
 }
 
+// ── Chat View ──────────────────────────────────────────────────
 function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isAISession, post, myProfile, currentUserId, preloadedOtherProfile, allListenerSessions, newListenerNotif, onNewListenerDismiss, onSwitchListener, showEndTip, onEndTipDismiss, onBack, onEnd }) {
-  const [sessionId, setSessionId] = useState(initialSessionId)
+  const [sessionId, setSessionId] = useState(initialSessionId) // may be null for pending listener sessions
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
@@ -818,8 +984,10 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
   const isAIChat = isSeedSession || isAISession
   const TYPING_REVEAL_MS = 3000
 
+  // Sync sessionId if parent switches session (FAB multi-listener)
   useEffect(() => { setSessionId(initialSessionId) }, [initialSessionId])
 
+  // Load other profile
   useEffect(() => {
     if (preloadedOtherProfile) { setOtherProfile(preloadedOtherProfile); return }
     if (isAIChat) return
@@ -827,7 +995,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       if (!isExpresser && post?.user_id) {
         const { data } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', post.user_id).single()
         if (data) setOtherProfile(data)
-      } else if (isExpresser && sessionId) {
+      } else if (isExpresser) {
         const { data: s } = await supabase.from('sessions').select('listener_id').eq('id', sessionId).single()
         if (s?.listener_id) { const { data } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', s.listener_id).single(); if (data) setOtherProfile(data) }
       }
@@ -835,55 +1003,66 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
     load()
   }, [post, isExpresser, isAIChat, sessionId, preloadedOtherProfile])
 
+  // Load messages
   useEffect(() => {
     seenIds.current = new Set()
-    // Seed session with real DB session ID — load from Supabase
-    if (isSeedSession && sessionId && !String(sessionId).startsWith('seed-')) {
-      async function loadSeedFromDB() {
+    if (isSeedSession && sessionId && !sessionId.startsWith('seed-')) {
+      // Seed session with real DB ID — load from DB
+      async function loadSeedMessages() {
         const { data } = await supabase.from('messages').select('*').eq('session_id', sessionId).order('created_at', { ascending: true })
         const msgs = data || []
         if (msgs.length === 0) {
-          setMessages([{ id: `seed-open-${sessionId}`, sender_id: 'other', content: post?.content ?? '', created_at: new Date().toISOString() }])
+          // First open — show opening post content
+          const openingMsg = { id: `seed-init-${sessionId}`, sender_id: 'other', content: post?.content ?? '', created_at: new Date().toISOString() }
+          setMessages([openingMsg])
         } else {
           msgs.forEach(m => seenIds.current.add(m.id))
           setMessages(msgs)
         }
-        setHasInteracted(msgs.some(m => m.sender_id === currentUserId && !m.is_ai_msg))
+        setHasInteracted(msgs.some(m => m.sender_id === currentUserId))
         setLoading(false)
       }
-      loadSeedFromDB(); return
+      loadSeedMessages(); return
     }
-    // Seed session still using in-memory ID
     if (isSeedSession) {
       const pid = String(sessionId).replace('seed-', '')
+      // Restore from localStorage if not in memory
       if (!seedChatStore[pid]) {
-        const stored = localStorage.getItem(`seed_msgs_${pid}`)
+        const stored = localStorage.getItem(`seed_msgs_${user.id}_${pid}`)
         if (stored) { try { seedChatStore[pid] = JSON.parse(stored) } catch {} }
       }
       const msgs = seedChatStore[pid] || []
       msgs.forEach(m => seenIds.current.add(m.id))
       setMessages(msgs); setHasInteracted(msgs.some(m => m.sender_id === currentUserId)); setLoading(false); return
     }
+    // Pending session — no DB session yet, show the post as first message
     if (!sessionId) {
-      setMessages([{ id: 'pending-open', sender_id: 'other', content: post?.content ?? '', created_at: new Date().toISOString() }])
-      setLoading(false); return
+      const openingMsg = { id: 'pending-open', sender_id: 'other', content: post?.content ?? '', created_at: new Date().toISOString() }
+      setMessages([openingMsg]); setLoading(false); return
     }
+    // Also fetch session status to know if it's closed (disable input if so)
     async function loadMessages() {
       const { data: s } = await supabase.from('sessions').select('status').eq('id', sessionId).single()
       if (s?.status === 'closed') setSessionClosed(true)
+
       const { data } = await supabase.from('messages').select('*').eq('session_id', sessionId).order('created_at', { ascending: true })
       const msgs = data || []
       msgs.forEach(m => seenIds.current.add(m.id))
+      // If any message is a system end-message, mark closed
       if (msgs.some(m => m.content?.startsWith('__system__:'))) setSessionClosed(true)
       setMessages(msgs)
       setHasInteracted(msgs.some(m => m.sender_id === currentUserId && !m.content?.startsWith('__system__:') && !m.is_ai_msg))
       setLoading(false)
+
+      // Send any queued journal messages from sessionStorage
       if (isExpresser && post?.id) {
         const queued = getJournalQueue(post.id)
         if (queued.length) {
           clearJournalQueue(post.id)
           for (const item of queued) {
-            const { data: inserted } = await supabase.from('messages').insert({ session_id: sessionId, sender_id: item.userId, content: item.text }).select().single()
+            const { data: inserted } = await supabase.from('messages')
+              .insert({ session_id: sessionId, sender_id: item.userId, content: item.text })
+              .select().single()
             if (inserted) { seenIds.current.add(inserted.id); setMessages(m => [...m, inserted]) }
           }
         }
@@ -892,9 +1071,10 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
     loadMessages()
   }, [sessionId])
 
-  // AI listener greets when real AI session opens
+  // AI listener greets when session opens — fires once if AI hasn't replied yet
   useEffect(() => {
-    const hasAIReply = messages.some(m => m.is_ai_msg || (m.sender_id === 'other' && String(m.id).startsWith('ai-')))
+    const hasAIReply = messages.some(m => m.is_ai_msg || (m.sender_id === 'other' && m.id.startsWith('ai-')))
+    // Greet if: real AI session, not seed, not loading, AI hasn't spoken yet, have post content
     if (!isAISession || isSeedSession || loading || hasAIReply || !post?.content || !sessionId) return
     let fired = false
     async function aiGreet() {
@@ -902,9 +1082,14 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       const postText = post.content.trim()
       if (!postText) return
       setAiThinking(true)
+      // Build history from ALL existing messages so AI has full context
       const existingHistory = messages
         .filter(m => m.content && m.content.trim() && !m.content.startsWith('__system__:'))
-        .map(m => ({ role: (m.sender_id === currentUserId && !m.is_ai_msg) ? 'user' : 'assistant', content: m.content.trim() }))
+        .map(m => ({
+          role: (m.sender_id === currentUserId && !m.is_ai_msg) ? 'user' : 'assistant',
+          content: m.content.trim()
+        }))
+      // If no existing messages, use post content as the opening message
       const history = existingHistory.length > 0 ? existingHistory : [{ role: 'user', content: postText }]
       const aiText = await getAIResponse(history, 'listener', postText)
       setAiThinking(false)
@@ -914,11 +1099,12 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       setOtherTyping(false)
       const aiMsg = { id: `ai-open-${Date.now()}`, sender_id: 'other', content: aiText, is_ai_msg: true, created_at: new Date().toISOString() }
       seenIds.current.add(aiMsg.id)
-      const greetSid = !String(sessionId).startsWith('seed-') ? sessionId : null
+      // If no existing messages, show opening post + AI reply together
       if (messages.length === 0) {
         const openingMsg = { id: `init-${sessionId}`, sender_id: currentUserId, content: postText, is_ai_msg: false, created_at: new Date().toISOString() }
         seenIds.current.add(openingMsg.id)
         setMessages([openingMsg, aiMsg])
+        const greetSid = !String(sessionId).startsWith('seed-') ? sessionId : null
         if (greetSid) {
           const { error: e1 } = await supabase.from('messages').insert({ session_id: greetSid, sender_id: currentUserId, content: postText })
           if (e1) console.error('Opening post save failed:', e1)
@@ -926,7 +1112,9 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
           if (e2) console.error('AI greeting save failed:', e2)
         }
       } else {
+        // User already sent messages — just append AI reply
         setMessages(m => [...m, aiMsg])
+        const greetSid = !String(sessionId).startsWith('seed-') ? sessionId : null
         if (greetSid) {
           const { error } = await supabase.from('messages').insert({ session_id: greetSid, sender_id: currentUserId, content: aiText, is_ai_msg: true })
           if (error) console.error('AI greeting save failed:', error)
@@ -936,31 +1124,49 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
     aiGreet()
   }, [isAISession, loading, sessionId, messages.length])
 
+  // Real-time messages — deduplicated, with 3-second typing reveal
   useEffect(() => {
     if (isAIChat || !sessionId) return
     const ch = supabase.channel(`chat-${sessionId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `session_id=eq.${sessionId}` },
         (payload) => {
           const msg = payload.new
+          // Deduplicate by real DB id — skip if already shown
           if (seenIds.current.has(msg.id)) return
           seenIds.current.add(msg.id)
-          if (msg.content?.startsWith('__system__:')) { setSessionClosed(true); setMessages(m => m.find(x => x.id === msg.id) ? m : [...m, msg]); return }
-          if (msg.sender_id === currentUserId) { setMessages(m => m.find(x => x.id === msg.id) ? m : [...m, msg]); return }
+          // System messages appear immediately
+          // Detect system messages by content prefix (avoids RLS issues with sender_id = system)
+          if (msg.content?.startsWith('__system__:')) {
+            setSessionClosed(true)
+            setMessages(m => m.find(x => x.id === msg.id) ? m : [...m, msg])
+            return
+          }
+          // Own messages sent by the journal (or another device) — add without typing dots
+          if (msg.sender_id === currentUserId) {
+            setMessages(m => m.find(x => x.id === msg.id) ? m : [...m, msg])
+            return
+          }
+          // Other person's messages — show typing dots then reveal
           setOtherTyping(true)
           clearTimeout(pendingTimer.current)
           pendingTimer.current = setTimeout(() => {
             setOtherTyping(false)
-            setMessages(m => m.find(x => x.id === msg.id) ? m : [...m, msg])
+            setMessages(m => {
+              if (m.find(x => x.id === msg.id)) return m
+              return [...m, msg]
+            })
           }, TYPING_REVEAL_MS)
         })
       .subscribe()
     typingChannel.current = supabase.channel(`typing-${sessionId}`)
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
         if (payload.user_id !== currentUserId) {
-          setOtherTyping(true); clearTimeout(pendingTimer.current)
+          setOtherTyping(true)
+          clearTimeout(pendingTimer.current)
           pendingTimer.current = setTimeout(() => setOtherTyping(false), 3000)
         }
-      }).subscribe()
+      })
+      .subscribe()
     return () => {
       supabase.removeChannel(ch)
       if (typingChannel.current) supabase.removeChannel(typingChannel.current)
@@ -970,7 +1176,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, otherTyping, aiThinking])
 
-  function broadcastTyping() { if (sessionId) typingChannel.current?.send({ type: 'broadcast', event: 'typing', payload: { user_id: currentUserId } }) }
+  function broadcastTyping() { typingChannel.current?.send({ type: 'broadcast', event: 'typing', payload: { user_id: currentUserId } }) }
 
   async function send() {
     if (!input.trim() || aiThinking) return
@@ -984,7 +1190,10 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       setAiThinking(true)
       const history = updated
         .filter(m => m.content && m.content.trim())
-        .map(m => ({ role: m.sender_id === currentUserId && !m.is_ai_msg ? 'user' : 'assistant', content: m.content.trim() }))
+        .map(m => ({
+          role: m.sender_id === currentUserId ? 'user' : 'assistant',
+          content: m.content.trim()
+        }))
       const postContext = post?.content ?? ''
       const aiRole = isSeedSession ? 'expresser' : 'listener'
       const aiText = await getAIResponse(history, aiRole, postContext)
@@ -996,50 +1205,24 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       const aiMsg = { id: `ai-${Date.now()}`, sender_id: 'other', content: aiText, is_ai_msg: true, created_at: new Date().toISOString() }
       const withAI = [...updated, aiMsg]
       setMessages(withAI)
-
-      // FIX: Save to Supabase for cross-device sync
-      // For seed sessions with in-memory IDs, create a real DB session first
-      let activeSid = !String(sessionId).startsWith('seed-') ? sessionId : null
-      if (!activeSid && isSeedSession) {
-        try {
-          // Create real post + session in Supabase
-          const { data: realPost } = await supabase.from('posts')
-            .insert({ user_id: currentUserId, content: post?.content ?? '', emotion_tag: post?.emotion_tag ?? null, is_anonymous: false, status: 'active' })
-            .select().single()
-          if (realPost) {
-            const { data: realSession } = await supabase.from('sessions')
-              .insert({ post_id: realPost.id, expresser_id: currentUserId, listener_id: currentUserId, status: 'active', is_ai: true })
-              .select().single()
-            if (realSession) {
-              activeSid = realSession.id
-              // Store mapping so we can find this session later
-              try { localStorage.setItem(`seed_post_id_${realSession.id}`, String(sessionId).replace('seed-', '')) } catch {}
-              setSessionId(realSession.id)
-              // Save all messages so far
-              for (const m of withAI) {
-                if (String(m.id).startsWith('seed-init-') || String(m.id).startsWith('pending')) continue
-                await supabase.from('messages').insert({ session_id: realSession.id, sender_id: currentUserId, content: m.content, is_ai_msg: m.is_ai_msg ?? false })
-              }
-            }
-          }
-        } catch (err) { console.error('Failed to create DB session for seed chat:', err) }
-      }
-      if (activeSid && !isSeedSession) {
-        // For real AI sessions, save each message pair
-        const { error: e1 } = await supabase.from('messages').insert({ session_id: activeSid, sender_id: currentUserId, content })
+      // Save messages to DB — use currentUserId for both so RLS passes; is_ai_msg marks AI
+      const sid = !String(sessionId).startsWith('seed-') ? sessionId : null
+      if (sid) {
+        const { error: e1 } = await supabase.from('messages').insert({ session_id: sid, sender_id: currentUserId, content })
         if (e1) console.error('User msg save failed:', e1)
-        const { error: e2 } = await supabase.from('messages').insert({ session_id: activeSid, sender_id: currentUserId, content: aiText, is_ai_msg: true })
+        const { error: e2 } = await supabase.from('messages').insert({ session_id: sid, sender_id: currentUserId, content: aiText, is_ai_msg: true })
         if (e2) console.error('AI msg save failed:', e2)
       }
-      // Also persist to localStorage as fallback
-      if (isSeedSession) {
-        const pid = String(sessionId).startsWith('seed-') ? String(sessionId).replace('seed-', '') : sessionId
+      if (isSeedSession && String(sessionId).startsWith('seed-')) {
+        const pid = String(sessionId).replace('seed-', '')
         seedChatStore[pid] = withAI
-        try { localStorage.setItem(`seed_msgs_${pid}`, JSON.stringify(withAI)) } catch {}
+        // Persist to localStorage so seed chats survive navigation
+        try { localStorage.setItem(`seed_msgs_${currentUserId}_${pid}`, JSON.stringify(withAI)) } catch {} //chatgpt seed trying
       }
       return
     }
 
+    // If this is a pending listener session (no DB session yet), create it now on first message
     let activeSessionId = sessionId
     if (!sessionId && post) {
       const { data: newSession } = await supabase.from('sessions')
@@ -1047,20 +1230,33 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
         .select().single()
       if (!newSession) { setMessages(m => m.filter(msg => msg.id !== tempId)); return }
       await supabase.from('posts').update({ status: 'active' }).eq('id', post.id)
-      activeSessionId = newSession.id; setSessionId(activeSessionId)
+      activeSessionId = newSession.id
+      setSessionId(activeSessionId)
     }
+
     const { data: inserted, error } = await supabase.from('messages').insert({ session_id: activeSessionId, sender_id: currentUserId, content }).select().single()
     if (error) { setMessages(m => m.filter(msg => msg.id !== tempId)); return }
-    if (inserted) { seenIds.current.add(inserted.id); setMessages(m => m.map(msg => msg.id === tempId ? { ...msg, id: inserted.id } : msg)) }
+    // Replace temp ID with real ID
+    if (inserted) {
+      seenIds.current.add(inserted.id)
+      setMessages(m => m.map(msg => msg.id === tempId ? { ...msg, id: inserted.id } : msg))
+    }
     inputRef.current?.focus()
   }
 
-  // FIX: handleEndChat — removed !isAIChat guard so AI sessions also get closed in DB
   async function handleEndChat() {
-    if (sessionId && !String(sessionId).startsWith('seed-')) {
+    if (!isAIChat && sessionId) {
       await supabase.from('sessions').update({ status: 'closed' }).eq('id', sessionId)
-      const systemContent = isExpresser ? '__system__:The expresser has closed this conversation.' : '__system__:Your listener has ended this conversation.'
-      await supabase.from('messages').insert({ session_id: sessionId, sender_id: currentUserId, content: systemContent })
+      // Prefix with __system__: so receiver renders it as a notice not a bubble
+      // Using currentUserId (not 'system') so Supabase RLS allows the insert
+      const systemContent = isExpresser
+        ? '__system__:The expresser has closed this conversation.'
+        : '__system__:Your listener has ended this conversation.'
+      await supabase.from('messages').insert({
+        session_id: sessionId,
+        sender_id: currentUserId,
+        content: systemContent
+      })
     }
     setSessionClosed(true)
     if (isExpresser) { setShowRating(true) } else if (hasInteracted) { setEnded(true) } else { onEnd?.() }
@@ -1073,12 +1269,15 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
     if (post?.is_anonymous) return 'Anonymous'
     return otherProfile?.full_name?.split(' ')[0] ?? (isExpresser ? 'Listener' : 'Someone')
   })()
-  const otherAvatar = isSeedSession ? (post?.is_anonymous ? null : post?.profiles?.avatar_url ?? null)
-                    : post?.is_anonymous ? null : (otherProfile?.avatar_url ?? null)
+  const otherAvatar = (() => {
+    if (isSeedSession) return post?.is_anonymous ? null : (post?.profiles?.avatar_url ?? null)
+    if (post?.is_anonymous) return null
+    return otherProfile?.avatar_url ?? null
+  })()
   const myName = myProfile?.full_name?.split(' ')[0] ?? 'You'
   const myAvatar = myProfile?.avatar_url ?? null
 
-  if (showRating) return <RatingScreen onSubmit={async (r) => { if (sessionId && !String(sessionId).startsWith('seed-')) await supabase.from('sessions').update({ rating: r }).eq('id', sessionId); onEnd?.() }} onSkip={() => onEnd?.()} />
+  if (showRating) return <RatingScreen onSubmit={async (r) => { if (!isAIChat) await supabase.from('sessions').update({ rating: r }).eq('id', sessionId); onEnd?.() }} onSkip={() => onEnd?.()} />
   if (ended) {
     return (
       <div className="page" style={{ padding: '0 28px', justifyContent: 'center', alignItems: 'center', gap: 24, textAlign: 'center' }}>
@@ -1093,19 +1292,30 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
   return (
     <>
       {showEndTip && !isExpresser && <Modal title="You've started listening 💙" body="When your conversation feels complete, tap 'End' in the top right to close it with care." primaryLabel="Got it" primaryAction={onEndTipDismiss} />}
+
+      {/* New listener notification for expresser */}
       {newListenerNotif && isExpresser && (
-        <Modal title="Someone else is here for you 💙" body="Another person has seen your words and wants to be present with you. Would you like to connect with them too?"
-          primaryLabel="Yes, see their message" primaryAction={() => onSwitchListener?.(newListenerNotif)}
-          secondaryLabel="Stay in this chat" secondaryAction={onNewListenerDismiss} />
+        <Modal
+          title="Someone else is here for you 💙"
+          body="Another person has seen your words and wants to be present with you. Would you like to connect with them too?"
+          primaryLabel="Yes, see their message"
+          primaryAction={() => onSwitchListener?.(newListenerNotif)}
+          secondaryLabel="Stay in this chat"
+          secondaryAction={onNewListenerDismiss}
+        />
       )}
+
       {showEndConfirm && <Modal
         title={isExpresser ? 'Ready to close this conversation?' : 'End this listening session?'}
         body={isExpresser ? 'You can always come back and express yourself again whenever you need to.' : hasInteracted ? "You've given your time and presence — that's a beautiful thing." : "It looks like you haven't responded yet. Are you sure you want to leave?"}
         primaryLabel={isExpresser ? 'Yes, close it' : hasInteracted ? 'End session' : 'Leave without chatting'}
         primaryAction={() => { setShowEndConfirm(false); handleEndChat() }}
-        secondaryLabel="Keep talking" secondaryAction={() => setShowEndConfirm(false)} />}
+        secondaryLabel="Keep talking"
+        secondaryAction={() => setShowEndConfirm(false)}
+      />}
 
       <div className="page" style={{ justifyContent: 'flex-start', height: '100dvh' }}>
+        {/* Header */}
         <div style={{ padding: '52px 24px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
           <button onClick={() => onBack?.(hasInteracted)} style={{ color: 'rgba(240,239,232,0.5)', display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer' }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
@@ -1113,30 +1323,34 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
           <Avatar url={otherAvatar} name={otherName} size={38} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ fontSize: 15, fontWeight: 500, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{otherName}</p>
-            <p style={{ fontSize: 12, color: sessionClosed ? 'rgba(240,239,232,0.35)' : 'var(--teal)' }}>● {sessionClosed ? 'conversation ended' : isExpresser ? 'your listener is here' : 'you are listening'}</p>
+            <p style={{ fontSize: 12, color: 'var(--teal)' }}>● {isExpresser ? 'your listener is here' : 'you are listening'}</p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             {post?.emotion_tag && <span style={{ fontSize: 11, padding: '4px 10px', borderRadius: 10, background: 'var(--bg3)', color: 'var(--teal)', border: '1px solid rgba(93,202,165,0.2)' }}>{post.emotion_tag}</span>}
             {!sessionClosed
-              ? <button onClick={() => setShowEndConfirm(true)} style={{ fontSize: 12, fontWeight: 600, color: '#fff', padding: '5px 12px', border: 'none', borderRadius: 8, cursor: 'pointer', background: '#E24B4A' }}>End</button>
+              ? <button onClick={() => setShowEndConfirm(true)} style={{ fontSize: 12, fontWeight: 600, color: '#fff', padding: '5px 12px', border: 'none', borderRadius: 8, cursor: 'pointer', background: '#E24B4A', letterSpacing: '0.02em' }}>End</button>
               : <span style={{ fontSize: 11, color: 'rgba(240,239,232,0.35)', padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 8 }}>Ended</span>
             }
           </div>
         </div>
 
+        {/* Messages */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {!isExpresser && !sessionClosed && (
+          {!isExpresser && (
             <div style={{ textAlign: 'center', padding: '10px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 8 }}>
               <p style={{ fontSize: 12, color: 'rgba(240,239,232,0.6)', lineHeight: 1.6 }}>Be present, not a problem-solver. Let them feel heard first. 💙</p>
             </div>
           )}
           {loading && <div style={{ textAlign: 'center', padding: 20 }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--accent)', display: 'inline-block', animation: 'pulse 1.2s infinite' }} /></div>}
           {messages.map(msg => {
+            // System messages render as centered notices
             if (msg.content?.startsWith('__system__:')) {
+              // If the other side ended, mark this chat as closed for us too
+              if (!sessionClosed) setSessionClosed(true)
               return (
                 <div key={msg.id} style={{ textAlign: 'center', padding: '8px 16px' }}>
                   <span style={{ fontSize: 12, color: 'rgba(240,239,232,0.4)', background: 'var(--bg2)', padding: '6px 14px', borderRadius: 20, border: '1px solid var(--border)' }}>
-                    {msg.content.replace('__system__:', '')}
+                    {msg.content}
                   </span>
                 </div>
               )
@@ -1161,6 +1375,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
           <div ref={bottomRef} />
         </div>
 
+        {/* Input — disabled if session is closed */}
         {sessionClosed ? (
           <div style={{ padding: '16px 24px 32px', borderTop: '1px solid var(--border)', textAlign: 'center' }}>
             <p style={{ fontSize: 13, color: 'rgba(240,239,232,0.35)' }}>This conversation has ended.</p>
@@ -1179,6 +1394,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
         )}
       </div>
 
+      {/* Floating FAB for multi-listener switching — matches reference image */}
       {isExpresser && allListenerSessions && allListenerSessions.length > 1 && (
         <ListenerFAB sessions={allListenerSessions} currentSessionId={sessionId} onSwitch={onSwitchListener} />
       )}
@@ -1186,12 +1402,14 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
   )
 }
 
+// Floating chat FAB rendered via portal
 function ListenerFAB({ sessions, currentSessionId, onSwitch }) {
   const [open, setOpen] = useState(false)
   const activeSessions = sessions.filter(s => s.status !== 'closed')
   if (activeSessions.length <= 1) return null
   return createPortal(
     <div style={{ position: 'fixed', bottom: 88, right: 20, zIndex: 9998, pointerEvents: 'all' }}>
+      {/* Popup card — appears above FAB */}
       {open && (
         <div style={{ position: 'absolute', bottom: 64, right: 0, background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 16, padding: '10px 0', width: 210, boxShadow: '0 8px 40px rgba(0,0,0,0.6)', zIndex: 9999, pointerEvents: 'all' }}>
           <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(240,239,232,0.4)', padding: '0 16px 8px' }}>Listeners</p>
@@ -1203,7 +1421,9 @@ function ListenerFAB({ sessions, currentSessionId, onSwitch }) {
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', background: isCurrent ? 'rgba(139,124,246,0.15)' : 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}
                 onMouseEnter={e => { if (!isCurrent) e.currentTarget.style.background = 'var(--bg3)' }}
                 onMouseLeave={e => { if (!isCurrent) e.currentTarget.style.background = 'transparent' }}>
-                <div style={{ width: 32, height: 32, borderRadius: '50%', background: isCurrent ? 'var(--accent)' : 'var(--bg3)', border: `2px solid ${isCurrent ? 'var(--accent)' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: isCurrent ? '#fff' : 'rgba(240,239,232,0.5)', flexShrink: 0 }}>{i + 1}</div>
+                <div style={{ width: 32, height: 32, borderRadius: '50%', background: isCurrent ? 'var(--accent)' : 'var(--bg3)', border: `2px solid ${isCurrent ? 'var(--accent)' : 'var(--border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: isCurrent ? '#fff' : 'rgba(240,239,232,0.5)', flexShrink: 0 }}>
+                  {i + 1}
+                </div>
                 <div>
                   <p style={{ fontSize: 13, color: isCurrent ? 'var(--accent)' : 'rgba(240,239,232,0.85)', fontWeight: isCurrent ? 600 : 400, margin: 0 }}>{name}</p>
                   {isCurrent && <p style={{ fontSize: 10, color: 'var(--teal)', margin: 0 }}>Current chat</p>}
@@ -1213,6 +1433,7 @@ function ListenerFAB({ sessions, currentSessionId, onSwitch }) {
           })}
         </div>
       )}
+      {/* Circular FAB button */}
       <button onClick={() => setOpen(o => !o)}
         style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--accent)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 20px rgba(139,124,246,0.5)', transition: 'transform 0.15s', transform: open ? 'scale(0.9)' : 'scale(1)', position: 'relative' }}>
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
