@@ -8,7 +8,7 @@ import { getAIResponse } from '../lib/ai'
 // ── Greeting ───────────────────────────────────────────────────
 function getGreeting() {
   const h = new Date().getHours()
-  if (h >= 23 || h < 4)  return 'Still up? A'
+  if (h >= 23 || h < 4)  return 'Still up'
   if (h >= 4  && h < 12) return 'Good'
   if (h >= 12 && h < 16) return 'Good af'
   if (h >= 16 && h < 18) return 'Good n'
@@ -56,14 +56,14 @@ function ListenerStars({ count }) {
 }
 
 const SEED_POSTS = [
-  { id: 'seed-1', content: "I've been really hard on myself lately. Like nothing I do is ever enough, no matter how hard I try.", emotion_tag: 'overwhelmed', is_anonymous: false, created_at: new Date(Date.now() - 4 * 60000).toISOString(), profiles: { full_name: 'Priya', avatar_url: null }, is_seed: true },
-  { id: 'seed-2', content: "Had a panic attack at work today and had to pretend everything was fine. I'm exhausted from holding it together.", emotion_tag: 'anxious', is_anonymous: true, created_at: new Date(Date.now() - 9 * 60000).toISOString(), profiles: null, is_seed: true },
-  { id: 'seed-3', content: "My relationship ended two weeks ago and I still reach for my phone to text them. I don't know how to stop.", emotion_tag: 'sad', is_anonymous: false, created_at: new Date(Date.now() - 14 * 60000).toISOString(), profiles: { full_name: 'Jordan', avatar_url: null }, is_seed: true },
-  { id: 'seed-4', content: "I got the promotion I worked two years for and I feel... nothing. I thought I'd be happy. Is that normal?", emotion_tag: 'confused', is_anonymous: false, created_at: new Date(Date.now() - 22 * 60000).toISOString(), profiles: { full_name: 'Sam', avatar_url: null }, is_seed: true },
-  { id: 'seed-5', content: "I've been cancelling plans with friends because I just don't have the energy. I miss who I used to be.", emotion_tag: 'numb', is_anonymous: false, created_at: new Date(Date.now() - 35 * 60000).toISOString(), profiles: { full_name: 'Marcus', avatar_url: null }, is_seed: true },
-  { id: 'seed-6', content: "I snapped at someone I love today and I can't stop thinking about it. I hate when I'm like this.", emotion_tag: 'guilty', is_anonymous: false, created_at: new Date(Date.now() - 48 * 60000).toISOString(), profiles: { full_name: 'Aisha', avatar_url: null }, is_seed: true },
-  { id: 'seed-7', content: "Just got back from my first solo trip and I feel so proud of myself. Six months ago I couldn't have done that.", emotion_tag: 'grateful', is_anonymous: false, created_at: new Date(Date.now() - 55 * 60000).toISOString(), profiles: { full_name: 'Lena', avatar_url: null }, is_seed: true },
-  { id: 'seed-8', content: "I finally told my best friend how much they mean to me after years of being too scared. Feels amazing.", emotion_tag: 'happy', is_anonymous: false, created_at: new Date(Date.now() - 70 * 60000).toISOString(), profiles: { full_name: 'Carlos', avatar_url: null }, is_seed: true },
+  { id: '00000000-0000-0000-0000-000000000010', content: "I've been really hard on myself lately. Like nothing I do is ever enough, no matter how hard I try.", emotion_tag: 'overwhelmed', is_anonymous: false, created_at: new Date(Date.now() - 4 * 60000).toISOString(), profiles: { full_name: 'Priya', avatar_url: null }, is_seed: true },
+  { id: '00000000-0000-0000-0000-000000000002', content: "Had a panic attack at work today and had to pretend everything was fine. I'm exhausted from holding it together.", emotion_tag: 'anxious', is_anonymous: true, created_at: new Date(Date.now() - 9 * 60000).toISOString(), profiles: null, is_seed: true },
+  { id: '00000000-0000-0000-0000-000000000003', content: "My relationship ended two weeks ago and I still reach for my phone to text them. I don't know how to stop.", emotion_tag: 'sad', is_anonymous: false, created_at: new Date(Date.now() - 14 * 60000).toISOString(), profiles: { full_name: 'Jordan', avatar_url: null }, is_seed: true },
+  { id: '00000000-0000-0000-0000-000000000004', content: "I got the promotion I worked two years for and I feel... nothing. I thought I'd be happy. Is that normal?", emotion_tag: 'confused', is_anonymous: false, created_at: new Date(Date.now() - 22 * 60000).toISOString(), profiles: { full_name: 'Sam', avatar_url: null }, is_seed: true },
+  { id: '00000000-0000-0000-0000-000000000005', content: "I've been cancelling plans with friends because I just don't have the energy. I miss who I used to be.", emotion_tag: 'numb', is_anonymous: false, created_at: new Date(Date.now() - 35 * 60000).toISOString(), profiles: { full_name: 'Marcus', avatar_url: null }, is_seed: true },
+  { id: '00000000-0000-0000-0000-000000000006', content: "I snapped at someone I love today and I can't stop thinking about it. I hate when I'm like this.", emotion_tag: 'guilty', is_anonymous: false, created_at: new Date(Date.now() - 48 * 60000).toISOString(), profiles: { full_name: 'Aisha', avatar_url: null }, is_seed: true },
+  { id: '00000000-0000-0000-0000-000000000007', content: "Just got back from my first solo trip and I feel so proud of myself. Six months ago I couldn't have done that.", emotion_tag: 'grateful', is_anonymous: false, created_at: new Date(Date.now() - 55 * 60000).toISOString(), profiles: { full_name: 'Lena', avatar_url: null }, is_seed: true },
+  { id: '00000000-0000-0000-0000-000000000008', content: "I finally told my best friend how much they mean to me after years of being too scared. Feels amazing.", emotion_tag: 'happy', is_anonymous: false, created_at: new Date(Date.now() - 70 * 60000).toISOString(), profiles: { full_name: 'Carlos', avatar_url: null }, is_seed: true },
 ]
 
 const seedChatStore = {}
@@ -651,13 +651,13 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
 
   async function handleSelectPost(post) {
     if (todayListenerCount >= DAILY_LISTEN_LIMIT) { setShowBurnoutBlock(true); return }
+    
     if (post.is_seed) {
-      console.log("Attempting to create AI session for post:", post.id);
-
+      // This will now work because post.id is 0000...0007 instead of "seed-7"
       const { data: newSession, error } = await supabase
         .from('sessions')
         .insert({
-          post_id: post.id,
+          post_id: post.id, 
           expresser_id: '00000000-0000-0000-0000-000000000001',
           listener_id: user.id,
           status: 'active'
@@ -666,17 +666,18 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
         .single()
 
       if (error) {
-        // THIS IS THE CRITICAL LOG
-        console.error("SUPABASE SESSION ERROR:", error.message, error.details, error.hint);
+        console.error("SESSION ERROR:", error.message);
+        // Fallback
         setActiveSession({ id: `seed-${post.id}`, is_seed: true, post })
       } else {
-        console.log("SUCCESS! Session created with ID:", newSession.id);
+        console.log("Session Created:", newSession.id);
         setActiveSession({ id: newSession.id, is_seed: true, post })
       }
       
       setShowEndTip(true)
       return
     }
+    // ... rest of function
     const { data: expresserProfile } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', post.user_id).single()
     const enrichedPost = { ...post, profiles: expresserProfile ?? post.profiles }
 
