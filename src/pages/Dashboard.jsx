@@ -186,11 +186,15 @@ export default function Dashboard() {
     if (!sessions) { setPastChats([]); return }
 
     const enriched = await Promise.all(
-      sessions.map(async (session) => {
-        // AI seed sessions: expresser is the placeholder AI ID
-        if (session.expresser_id === AI_EXPRESSER_ID) {
-          return { ...session, otherProfile: { full_name: 'AI Listener', avatar_url: null }, is_ai_seed: true }
-        }
+  sessions.map(async (session) => {
+    // Check for your AI Expresser ID
+    if (session.expresser_id === '00000000-0000-0000-0000-000000000001') {
+      return { 
+        ...session, 
+        otherProfile: { full_name: 'AI Expresser', avatar_url: null }, 
+        is_ai_seed: true 
+      }
+    }
         const otherId = session.expresser_id === user.id ? session.listener_id : session.expresser_id
         let otherProfile = null
         if (otherId && otherId !== AI_EXPRESSER_ID) {
@@ -1025,16 +1029,36 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       }
       loadSeedMessages(); return
     }
+   // FIX: Look in Supabase even for seed sessions
     if (isSeedSession) {
-      const pid = String(sessionId).replace('seed-', '')
-      // Restore from localStorage if not in memory
-      if (!seedChatStore[pid]) {
-        const stored = localStorage.getItem(`seed_msgs_${user.id}_${pid}`)
-        if (stored) { try { seedChatStore[pid] = JSON.parse(stored) } catch {} }
+      async function loadSeedFromSupabase() {
+        const { data, error } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('session_id', sessionId)
+          .order('created_at', { ascending: true })
+        
+        const msgs = data || []
+        
+        if (msgs.length > 0) {
+          msgs.forEach(m => seenIds.current.add(m.id))
+          setMessages(msgs)
+          setHasInteracted(msgs.some(m => m.sender_id === currentUserId))
+        } else {
+          // If no messages in DB yet, show the original post as the first bubble
+          const openingMsg = { 
+            id: `seed-init-${sessionId}`, 
+            sender_id: 'other', 
+            content: post?.content ?? '', 
+            created_at: new Date().toISOString() 
+          }
+          setMessages([openingMsg])
+          setHasInteracted(false)
+        }
+        setLoading(false)
       }
-      const msgs = seedChatStore[pid] || []
-      msgs.forEach(m => seenIds.current.add(m.id))
-      setMessages(msgs); setHasInteracted(msgs.some(m => m.sender_id === currentUserId)); setLoading(false); return
+      loadSeedFromSupabase()
+      return
     }
     // Pending session — no DB session yet, show the post as first message
     if (!sessionId) {
