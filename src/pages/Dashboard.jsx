@@ -8,7 +8,7 @@ import { getAIResponse } from '../lib/ai'
 // ── Greeting ───────────────────────────────────────────────────
 function getGreeting() {
   const h = new Date().getHours()
-  if (h >= 23 || h < 4)  return 'Still up? All okay?'
+  if (h >= 23 || h < 4)  return 'Still up? All ok'
   if (h >= 4  && h < 12) return 'Good'
   if (h >= 12 && h < 16) return 'Good af'
   if (h >= 16 && h < 18) return 'Good n'
@@ -651,19 +651,30 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
 
   async function handleSelectPost(post) {
     if (todayListenerCount >= DAILY_LISTEN_LIMIT) { setShowBurnoutBlock(true); return }
-    if (post.is_seed) {
-      // Seed posts use in-memory store — no DB session (post_id is not a real UUID)
-      // Restore from localStorage if returning to this seed chat
-      const storedKey = `seed_msgs_${post.id}`
-      const stored = localStorage.getItem(storedKey)
-      if (stored) {
-        try { seedChatStore[post.id] = JSON.parse(stored) } catch {}
+    if (post.is_seed) 
+      { // 1. Create a real session in Supabase for the AI chat
+      const { data: newSession, error } = await supabase
+        .from('sessions')
+        .insert({
+          post_id: post.id,
+          expresser_id: '00000000-0000-0000-0000-000000000001', // AI Profile ID
+          listener_id: user.id,
+          status: 'active'
+        })
+        .select()
+        .single()
+
+      if (error) {
+        console.error("Error creating AI session:", error)
+        // Fallback to memory if DB fails
+        setActiveSession({ id: `seed-${post.id}`, is_seed: true, post })
+      } else {
+        // 2. Use the REAL Database ID so it shows up in "Your Conversations"
+        setActiveSession({ id: newSession.id, is_seed: true, post })
       }
-      if (!seedChatStore[post.id]) {
-        seedChatStore[post.id] = [{ id: `seed-init-${post.id}`, sender_id: 'other', content: post.content, created_at: new Date().toISOString() }]
-      }
-      setActiveSession({ id: `seed-${post.id}`, is_seed: true, post })
-      setShowEndTip(true); return
+      
+      setShowEndTip(true)
+      return
     }
     const { data: expresserProfile } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', post.user_id).single()
     const enrichedPost = { ...post, profiles: expresserProfile ?? post.profiles }
@@ -1231,20 +1242,23 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       const withAI = [...updated, aiMsg]
       setMessages(withAI)
       // Save messages to DB — use currentUserId for both so RLS passes; is_ai_msg marks AI
-      const sid = sessionId
-      if (sid) {
-        const { error: e1 } = await supabase.from('messages').insert({ session_id: sid, sender_id: currentUserId, content })
-        if (e1) console.error('User msg save failed:', e1)
-        const { error: e2 } = await supabase.from('messages').insert({ session_id: sid, sender_id: currentUserId, content: aiText, is_ai_msg: true })
-        if (e2) console.error('AI msg save failed:', e2)
-      }
-      if (isSeedSession && String(sessionId).startsWith('seed-')) {
-        const pid = String(sessionId).replace('seed-', '')
-        seedChatStore[pid] = withAI
-        // Persist to localStorage so seed chats survive navigation
-        try { localStorage.setItem(`seed_msgs_${currentUserId}_${pid}`, JSON.stringify(withAI)) } catch {} //chatgpt seed trying
-      }
-      return
+      // CHANGE: Always attempt to save if we have a sessionId
+const sid = sessionId 
+
+if (sid) {
+  // 1. Save your message
+  const { error: e1 } = await supabase.from('messages')
+    .insert({ session_id: sid, sender_id: currentUserId, content })
+  
+  if (e1) console.error('User msg save failed:', e1)
+
+  // 2. Save AI message (if in an AI chat)
+  if (isAIChat && aiText) {
+     const { error: e2 } = await supabase.from('messages')
+       .insert({ session_id: sid, sender_id: currentUserId, content: aiText, is_ai_msg: true })
+     if (e2) console.error('AI msg save failed:', e2)
+  }
+}
     }
 
     // If this is a pending listener session (no DB session yet), create it now on first message
