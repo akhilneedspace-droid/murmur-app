@@ -11,7 +11,7 @@ function getGreeting() {
   if (h >= 23 || h < 4)  return 'Still '
   if (h >= 4  && h < 12) return 'Good Mor'
   if (h >= 12 && h < 16) return 'Good AA'
-  if (h >= 16 && h < 18) return 'Good n'
+  if (h >= 16 && h < 18) return 'Goodev'
   if (h >= 18 && h < 20) return 'Hope your evening is going great!'
   return "Don't forget to sleep on time. Good "
 }
@@ -928,8 +928,8 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
                   const preview = chat.posts?.content?.slice(0, 100) ?? ''
                   const isAnon = chat.posts?.is_anonymous
                   const otherName = seedData 
-                    ? (seedData.is_anonymous ? 'Anonymous' : (seedData.profiles?.full_name?.split(' ')[0] ?? 'Someone'))
-                    : (chat.is_anonymous ? 'Anonymous' : (chat.profiles?.full_name?.split(' ')[0] ?? 'Someone'))
+                    ? (seedData.profiles?.full_name?.split(' ')[0] ?? 'Someone')
+                    : (chat.profiles?.full_name?.split(' ')[0] ?? (chat.is_anonymous ? 'Anonymous' : 'Someone'))
                   const otherAvatar = seedData 
                     ? (seedData.is_anonymous ? null : (seedData.profiles?.avatar_url ?? null))
                     : (chat.is_anonymous ? null : (chat.profiles?.avatar_url ?? null))
@@ -1281,7 +1281,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       const { data: aiInserted } = await supabase.from('messages')
         .insert({ 
           session_id: activeSessionId, 
-          sender_id: currentUserId, 
+          sender_id: '00000000-0000-0000-0000-000000000001', 
           content: aiText, 
           is_ai_msg: true 
         })
@@ -1326,22 +1326,29 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
   // --- Inside ChatView.js ---
 
   const otherName = (() => {
-    // If it's a seed post, pull the name from the post.profiles object in your SEED_POSTS array
-    if (isSeedSession) {
-      return post?.profiles?.full_name?.split(' ')[0] ?? 'Someone'
+    // 1. Look for the post in your hardcoded list first
+    const seed = SEED_POSTS.find(s => s.id === post?.id || s.id === post?.post_id);
+
+    if (seed) {
+      return seed.profiles?.full_name?.split(' ')[0] ?? 'Someone';
     }
     
-    // Fallback for human anonymous posts
-    if (post?.is_anonymous) return 'Anonymous'
-    
-    // Normal human profile logic
-    return otherProfile?.full_name?.split(' ')[0] ?? (isExpresser ? 'Listener' : 'Someone')
-  })()
+    // 2. Fallback for AI Listeners (General AI)
+    if (isAISession) return 'AI Listener';
+
+    // 3. Normal human profile logic
+    if (post?.is_anonymous) return 'Anonymous';
+    return otherProfile?.full_name?.split(' ')[0] ?? (isExpresser ? 'Listener' : 'Someone');
+  })();
+
   const otherAvatar = (() => {
-    if (isSeedSession) return post?.is_anonymous ? null : (post?.profiles?.avatar_url ?? null)
-    if (post?.is_anonymous) return null
-    return otherProfile?.avatar_url ?? null
-  })()
+    const seed = SEED_POSTS.find(s => s.id === post?.id || s.id === post?.post_id);
+    
+    if (seed) return seed.profiles?.avatar_url ?? null;
+    if (isAISession || post?.is_anonymous) return null;
+    return otherProfile?.avatar_url ?? null;
+  })();
+
   const myName = myProfile?.full_name?.split(' ')[0] ?? 'You'
   const myAvatar = myProfile?.avatar_url ?? null
 
