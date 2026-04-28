@@ -1128,7 +1128,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
   useEffect(() => {
     const hasAIReply = messages.some(m => m.is_ai_msg || (m.sender_id === 'other' && m.id.startsWith('ai-')))
     // Greet if: real AI session, not seed, not loading, AI hasn't spoken yet, have post content
-    if (!isAISession || isSeedSession || loading || hasAIReply || !post?.content || !sessionId) return
+    if ((!isAISession && !isSeedSession) || loading || hasAIReply || !post?.content || !sessionId) return
     let fired = false
     async function aiGreet() {
       if (fired) return; fired = true
@@ -1159,9 +1159,9 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
         setMessages([openingMsg, aiMsg])
         const greetSid = !String(sessionId).startsWith('seed-') ? sessionId : null
         if (greetSid) {
-          const { error: e1 } = await supabase.from('messages').insert({ session_id: greetSid, sender_id: currentUserId, content: postText })
+          const { error: e1 } = await supabase.from('messages').insert({ session_id: greetSid, sender_id: '00000000-0000-0000-0000-000000000001', content: postText })
           if (e1) console.error('Opening post save failed:', e1)
-          const { error: e2 } = await supabase.from('messages').insert({ session_id: greetSid, sender_id: currentUserId, content: aiText, is_ai_msg: true })
+          const { error: e2 } = await supabase.from('messages').insert({ session_id: greetSid, sender_id: '00000000-0000-0000-0000-000000000001', content: aiText, is_ai_msg: true })
           if (e2) console.error('AI greeting save failed:', e2)
         }
       } else {
