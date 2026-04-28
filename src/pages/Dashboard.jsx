@@ -13,7 +13,7 @@ function getGreeting() {
   if (h >= 12 && h < 16) return 'Good AA'
   if (h >= 16 && h < 18) return 'Goodev'
   if (h >= 18 && h < 20) return 'Hope your evening is  '
-  return "Don't forget to sleep on time. Good "
+  return "Don't forget to sleep on time. Goo"
 }
 
 // ── Stars ──────────────────────────────────────────────────────
@@ -1179,27 +1179,32 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
 
   // Real-time messages — deduplicated, with 3-second typing reveal
   useEffect(() => {
-    if (isAIChat || !sessionId) return
+    // REMOVED 'isAIChat' from the check so it listens for Aisha/Database AI
+    if (!sessionId) return
+    
     const ch = supabase.channel(`chat-${sessionId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `session_id=eq.${sessionId}` },
         (payload) => {
           const msg = payload.new
+          
           // Deduplicate by real DB id — skip if already shown
           if (seenIds.current.has(msg.id)) return
           seenIds.current.add(msg.id)
-          // System messages appear immediately
-          // Detect system messages by content prefix (avoids RLS issues with sender_id = system)
+
+          // System messages
           if (msg.content?.startsWith('__system__:')) {
             setSessionClosed(true)
             setMessages(m => m.find(x => x.id === msg.id) ? m : [...m, msg])
             return
           }
-          // Own messages sent by the journal (or another device) — add without typing dots
+
+          // Own messages
           if (msg.sender_id === currentUserId) {
             setMessages(m => m.find(x => x.id === msg.id) ? m : [...m, msg])
             return
           }
-          // Other person's messages — show typing dots then reveal
+
+          // OTHER PERSON (or AI) messages — show typing dots then reveal
           setOtherTyping(true)
           clearTimeout(pendingTimer.current)
           pendingTimer.current = setTimeout(() => {
@@ -1211,6 +1216,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
           }, TYPING_REVEAL_MS)
         })
       .subscribe()
+
     typingChannel.current = supabase.channel(`typing-${sessionId}`)
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
         if (payload.user_id !== currentUserId) {
@@ -1220,6 +1226,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
         }
       })
       .subscribe()
+
     return () => {
       supabase.removeChannel(ch)
       if (typingChannel.current) supabase.removeChannel(typingChannel.current)
@@ -1290,17 +1297,33 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       await new Promise(r => setTimeout(r, 2000))
       setOtherTyping(false)
 
-      // Save AI response to Database
-      const { data: aiInserted } = await supabase.from('messages')
-        .insert({ 
-          session_id: activeSessionId, 
-          sender_id: '00000000-0000-0000-0000-000000000001', 
-          content: aiText, 
-          is_ai_msg: true 
-        })
-        .select().single()
+      // --- Inside the if(aiText) block of your send function ---
 
-      if (aiInserted) setMessages(prev => [...prev, aiInserted])
+        // 1. Save to Database so it's permanent
+        const { data: aiInserted, error: aiError } = await supabase
+          .from('messages')
+          .insert({ 
+            session_id: activeSessionId, 
+            sender_id: '00000000-0000-0000-0000-000000000001', // The AI ID
+            content: aiText, 
+            is_ai_msg: true 
+          })
+          .select()
+          .single()
+
+        if (aiError) {
+          console.error("AI Insert Error:", aiError.message)
+        }
+
+        // 2. CRITICAL: Manually add to your messages state so it appears on screen
+        if (aiInserted) {
+          // Add to seenIds so your useEffect doesn't duplicate it
+          if (seenIds && seenIds.current) {
+            seenIds.current.add(aiInserted.id)
+          }
+          // This line makes the bubble appear!
+          setMessages(prev => [...prev, aiInserted])
+        }
     }
   }
 }
