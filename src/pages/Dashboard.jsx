@@ -9,7 +9,7 @@ import { getAIResponse } from '../lib/ai'
 function getGreeting() {
   const h = new Date().getHours()
   if (h >= 23 || h < 4)  return 'Still '
-  if (h >= 4  && h < 12) return 'Good Morn'
+  if (h >= 4  && h < 12) return 'Good Mor'
   if (h >= 12 && h < 16) return 'Good af'
   if (h >= 16 && h < 18) return 'Good n'
   if (h >= 18 && h < 20) return 'Hope your evening is going great!'
