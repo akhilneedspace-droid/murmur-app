@@ -13,7 +13,7 @@ function getGreeting() {
   if (h >= 12 && h < 16) return 'Good AA'
   if (h >= 16 && h < 18) return 'Goodev'
   if (h >= 18 && h < 20) return 'Hope your evening is  '
-  return "Don't forget to sleep on time. Goo"
+  return "Don't forget to sleep on time. Go"
 }
 
 // ── Stars ──────────────────────────────────────────────────────
