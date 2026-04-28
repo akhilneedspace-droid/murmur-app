@@ -671,7 +671,7 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
         alert("Database Error: " + error.message + " - Check your Browser Console.");
         
         // Fallback to old behavior so the UI doesn't crash
-        setActiveSession({ id: `seed-${post.id}`, is_seed: true, post })
+        setActiveSession({ id: `{post.id}`, is_seed: true, post })
       } else {
         console.log("Session successfully created:", newSession.id);
         // Use the new REAL DB id
