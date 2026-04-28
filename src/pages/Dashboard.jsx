@@ -923,11 +923,16 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
 
                   // Listening card
                   const chat = row.data
+                  const seedData = SEED_POSTS.find(s => s.id === chat.post_id)
                   const isOngoing = chat.status === 'active'
                   const preview = chat.posts?.content?.slice(0, 100) ?? ''
                   const isAnon = chat.posts?.is_anonymous
-                  const otherName = isAnon ? 'Anonymous' : (chat.otherProfile?.full_name?.split(' ')[0] ?? 'Someone')
-                  const otherAvatar = isAnon ? null : chat.otherProfile?.avatar_url
+                  const otherName = seedData 
+                    ? (seedData.is_anonymous ? 'Anonymous' : (seedData.profiles?.full_name?.split(' ')[0] ?? 'Someone'))
+                    : (chat.is_anonymous ? 'Anonymous' : (chat.profiles?.full_name?.split(' ')[0] ?? 'Someone'))
+                  const otherAvatar = seedData 
+                    ? (seedData.is_anonymous ? null : (seedData.profiles?.avatar_url ?? null))
+                    : (chat.is_anonymous ? null : (chat.profiles?.avatar_url ?? null))
 
                   return (
                     <div key={`listen-${chat.id}`} style={{ padding: '14px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
@@ -1318,9 +1323,18 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
 
   function insertEmoji(e) { setInput(i => i + e); inputRef.current?.focus() }
 
+  // --- Inside ChatView.js ---
+
   const otherName = (() => {
-    if (isSeedSession) return post?.is_anonymous ? 'Anonymous' : (post?.profiles?.full_name?.split(' ')[0] ?? 'Someone')
+    // If it's a seed post, pull the name from the post.profiles object in your SEED_POSTS array
+    if (isSeedSession) {
+      return post?.profiles?.full_name?.split(' ')[0] ?? 'Someone'
+    }
+    
+    // Fallback for human anonymous posts
     if (post?.is_anonymous) return 'Anonymous'
+    
+    // Normal human profile logic
     return otherProfile?.full_name?.split(' ')[0] ?? (isExpresser ? 'Listener' : 'Someone')
   })()
   const otherAvatar = (() => {
