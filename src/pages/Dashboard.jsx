@@ -928,11 +928,11 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
                   const preview = chat.posts?.content?.slice(0, 100) ?? ''
                   const isAnon = chat.posts?.is_anonymous
                   const otherName = seedData 
-                    ? (seedData.profiles?.full_name?.split(' ')[0] ?? 'Someone')
-                    : (chat.profiles?.full_name?.split(' ')[0] ?? (chat.is_anonymous ? 'Anonymous' : 'Someone'))
+                    ? (seed.profiles?.full_name?.split(' ')[0] ?? 'Someone')
+                    : (post.profiles?.full_name?.split(' ')[0] ?? 'Someone');
                   const otherAvatar = seedData 
-                    ? (seedData.is_anonymous ? null : (seedData.profiles?.avatar_url ?? null))
-                    : (chat.is_anonymous ? null : (chat.profiles?.avatar_url ?? null))
+                    ? seed.profiles?.avatar_url
+  : post.profiles?.avatar_url;
 
                   return (
                     <div key={`listen-${chat.id}`} style={{ padding: '14px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
