@@ -653,12 +653,12 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
     if (todayListenerCount >= DAILY_LISTEN_LIMIT) { setShowBurnoutBlock(true); return }
     
     if (post.is_seed) {
-      // This will now work because post.id is 0000...0007 instead of "seed-7"
+      // 1. Create a real session in Supabase
       const { data: newSession, error } = await supabase
         .from('sessions')
         .insert({
-          post_id: post.id, 
-          expresser_id: '00000000-0000-0000-0000-000000000001',
+          post_id: post.id, // Ensure this is a UUID like '00000000-0000-0000-0000-000000000007'
+          expresser_id: '00000000-0000-0000-0000-000000000001', 
           listener_id: user.id,
           status: 'active'
         })
@@ -666,35 +666,32 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
         .single()
 
       if (error) {
-        console.error("SESSION ERROR:", error.message);
-        // Fallback
+        // This will pop up an error message on your screen if the DB rejects it
+        console.error("Supabase Error:", error.message);
+        alert("Database Error: " + error.message + " - Check your Browser Console.");
+        
+        // Fallback to old behavior so the UI doesn't crash
         setActiveSession({ id: `seed-${post.id}`, is_seed: true, post })
       } else {
-        console.log("Session Created:", newSession.id);
+        console.log("Session successfully created:", newSession.id);
+        // Use the new REAL DB id
         setActiveSession({ id: newSession.id, is_seed: true, post })
       }
       
       setShowEndTip(true)
       return
     }
-    // ... rest of function
-    const { data: expresserProfile } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', post.user_id).single()
-    const enrichedPost = { ...post, profiles: expresserProfile ?? post.profiles }
 
-    // Fix 5: Check if this listener already has a session for this post — reopen it instead of creating a duplicate
+    // Existing logic for human posts...
     const { data: existing } = await supabase.from('sessions')
       .select('*').eq('post_id', post.id).eq('listener_id', user.id).single()
 
     if (existing) {
-      // Reopen the existing session
-      setActiveSession({ ...existing, post: enrichedPost })
-      setShowEndTip(false) // don't show tip again for returning listener
+      setActiveSession({ ...existing, post })
       return
     }
 
-    // Fix 3: Don't create session immediately — store post data and create on first message
-    // Store as a "pending" session with no DB record yet
-    setActiveSession({ id: null, post: enrichedPost, isPending: true })
+    setActiveSession({ id: null, post, isPending: true })
     setShowEndTip(true)
   }
 
