@@ -1434,5 +1434,3 @@ function ListenerFAB({ sessions, currentSessionId, onSwitch }) {
     document.body
   )
 }
-
-export default ChatView;
