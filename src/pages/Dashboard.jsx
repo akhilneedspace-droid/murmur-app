@@ -11,7 +11,7 @@ function getGreeting() {
   if (h >= 23 || h < 4)  return 'Still '
   if (h >= 4  && h < 12) return 'Good Mor'
   if (h >= 12 && h < 16) return 'Good af'
-  if (h >= 16 && h < 18) return 'Good n'
+  if (h >= 16 && h < 18) return 'Good e'
   if (h >= 18 && h < 20) return 'Hope your evening is going great!'
   return "Don't forget to sleep on time. Good "
 }
@@ -762,8 +762,30 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
 
 function PostCard({ post, delay, onClick }) {
   const [hovered, setHovered] = useState(false)
-  const name = post.is_anonymous ? 'Anonymous' : (post.profiles?.full_name?.split(' ')[0] ?? 'Someone')
-  const avatarUrl = post.is_anonymous ? null : post.profiles?.avatar_url
+
+ // ADD THIS LINE: Check if this post is one of your seeds (Aisha, Priya, etc.)
+
+  const seed = SEED_POSTS.find(s => s.id === post.id);
+
+
+
+  // Update name logic to check the seed first
+
+  const name = seed 
+
+    ? (seed.is_anonymous ? 'Anonymous' : (seed.profiles?.full_name?.split(' ')[0] ?? 'Someone'))
+
+    : (post.is_anonymous ? 'Anonymous' : (post.profiles?.full_name?.split(' ')[0] ?? 'Someone'));
+
+
+
+  // Update avatar logic to check the seed first
+
+  const avatarUrl = seed
+
+    ? (seed.is_anonymous ? null : seed.profiles?.avatar_url)
+
+    : (post.is_anonymous ? null : post.profiles?.avatar_url);
   const timeAgo = d => { const m = Math.floor((Date.now() - new Date(d)) / 60000); if (m < 1) return 'just now'; if (m < 60) return `${m} min ago`; return `${Math.floor(m / 60)}h ago` }
   return (
     <button onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
