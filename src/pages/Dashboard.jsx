@@ -10,7 +10,7 @@ function getGreeting() {
   const h = new Date().getHours()
   if (h >= 23 || h < 4)  return 'Still '
   if (h >= 4  && h < 12) return 'Good M'
-  if (h >= 12 && h < 16) return 'Good AA'
+  if (h >= 12 && h < 16) return 'Good A'
   if (h >= 16 && h < 18) return 'Goodev'
   if (h >= 18 && h < 20) return 'Hope your evening is  '
   return "Don't forget to sleep on time. Go"
@@ -650,50 +650,44 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   }
 
   async function handleSelectPost(post) {
-    if (todayListenerCount >= DAILY_LISTEN_LIMIT) { setShowBurnoutBlock(true); return }
+  if (todayListenerCount >= DAILY_LISTEN_LIMIT) { setShowBurnoutBlock(true); return }
+  
+  if (post.is_seed) {
+    const { data: newSession, error } = await supabase
+      .from('sessions')
+      .insert({
+        post_id: post.id, 
+        expresser_id: '00000000-0000-0000-0000-000000000001', 
+        listener_id: user.id,
+        status: 'active'
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Supabase Error:", error.message);
+      // FIX: Use backticks or just the variable, not single quotes with curly braces
+      setActiveSession({ id: post.id, is_seed: true, post }) 
+    } else {
+      setActiveSession({ id: newSession.id, is_seed: true, post })
+    }
     
-    if (post.is_seed) {
-      // 1. Create a real session in Supabase
-      const { data: newSession, error } = await supabase
-        .from('sessions')
-        .insert({
-          post_id: post.id, // Ensure this is a UUID like '00000000-0000-0000-0000-000000000007'
-          expresser_id: '00000000-0000-0000-0000-000000000001', 
-          listener_id: user.id,
-          status: 'active'
-        })
-        .select()
-        .single()
-
-      if (error) {
-        // This will pop up an error message on your screen if the DB rejects it
-        console.error("Supabase Error:", error.message);
-        alert("Database Error: " + error.message + " - Check your Browser Console.");
-        
-        // Fallback to old behavior so the UI doesn't crash
-        setActiveSession({ id: `{post.id}`, is_seed: true, post })
-      } else {
-        console.log("Session successfully created:", newSession.id);
-        // Use the new REAL DB id
-        setActiveSession({ id: newSession.id, is_seed: true, post })
-      }
-      
-      setShowEndTip(true)
-      return
-    }
-
-    // Existing logic for human posts...
-    const { data: existing } = await supabase.from('sessions')
-      .select('*').eq('post_id', post.id).eq('listener_id', user.id).single()
-
-    if (existing) {
-      setActiveSession({ ...existing, post })
-      return
-    }
-
-    setActiveSession({ id: null, post, isPending: true })
     setShowEndTip(true)
+    return
   }
+
+  // Handle human posts
+  const { data: existing } = await supabase.from('sessions')
+    .select('*').eq('post_id', post.id).eq('listener_id', user.id).single()
+
+  if (existing) {
+    setActiveSession({ ...existing, post })
+  } else {
+    // If it's a new human session, set id to null and let ChatView create it on first message
+    setActiveSession({ id: null, post, isPending: true })
+  }
+  setShowEndTip(true)
+}
 
   if (showBurnoutBlock) {
     return (
