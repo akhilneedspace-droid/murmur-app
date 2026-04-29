@@ -9,7 +9,7 @@ import { getAIResponse } from '../lib/ai'
 function getGreeting() {
   const h = new Date().getHours()
   if (h >= 23 || h < 4)  return 'Still '
-  if (h >= 4  && h < 12) return 'Good Mor'
+  if (h >= 4  && h < 12) return 'Good Mo'
   if (h >= 12 && h < 16) return 'Good AA'
   if (h >= 16 && h < 18) return 'Goodev'
   if (h >= 18 && h < 20) return 'Hope your evening is  '
@@ -1254,23 +1254,35 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
 
   // IMPORTANT: If we don't have a sessionId, we MUST create one before saving messages
   if (!activeSessionId && post) {
-    const { data: newSession, error } = await supabase.from('sessions')
-      .insert({ 
-        post_id: post.id, 
+  try {
+    // Ensure we are using a valid UUID or a proper string
+    const targetPostId = post.id;
+    
+    const { data: newSession, error: sessionError } = await supabase
+      .from('sessions')
+      .insert([{ 
+        post_id: targetPostId, 
         expresser_id: isSeedSession ? '00000000-0000-0000-0000-000000000001' : post.user_id, 
         listener_id: currentUserId, 
         status: 'active' 
-      })
-      .select().single()
+      }])
+      .select()
+      .single();
     
-    if (newSession) {
-      activeSessionId = newSession.id
-      setSessionId(activeSessionId)
-    } else {
-      console.error("Could not link message to a session:", error)
-      return
+    if (sessionError) {
+      console.error("Supabase Session Error:", sessionError.message);
+      return;
     }
+
+    if (newSession) {
+      activeSessionId = newSession.id;
+      setSessionId(activeSessionId);
+    }
+  } catch (err) {
+    console.error("Critical Send Error:", err);
+    return;
   }
+}
 
   // Save the User Message to the Database
   const { data: inserted } = await supabase.from('messages')
