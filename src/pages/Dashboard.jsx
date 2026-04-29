@@ -10,9 +10,9 @@ function getGreeting() {
   const h = new Date().getHours()
   if (h >= 23 || h < 4)  return 'Still '
   if (h >= 4  && h < 12) return 'Good Mor'
-  if (h >= 12 && h < 16) return 'Good AA'
-  if (h >= 16 && h < 18) return 'Goodev'
-  if (h >= 18 && h < 20) return 'Hope your evening is go '
+  if (h >= 12 && h < 16) return 'Good af'
+  if (h >= 16 && h < 18) return 'Good n'
+  if (h >= 18 && h < 20) return 'Hope your evening is going great!'
   return "Don't forget to sleep on time. Good "
 }
 
@@ -923,16 +923,11 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
 
                   // Listening card
                   const chat = row.data
-                  const seedData = SEED_POSTS.find(s => s.id === chat.post_id)
                   const isOngoing = chat.status === 'active'
                   const preview = chat.posts?.content?.slice(0, 100) ?? ''
                   const isAnon = chat.posts?.is_anonymous
-                  const otherName = seedData 
-                    ? (seed.profiles?.full_name?.split(' ')[0] ?? 'Someone')
-                    : (post.profiles?.full_name?.split(' ')[0] ?? 'Someone');
-                  const otherAvatar = seedData 
-                    ? seed.profiles?.avatar_url
-  : post.profiles?.avatar_url;
+                  const otherName = isAnon ? 'Anonymous' : (chat.otherProfile?.full_name?.split(' ')[0] ?? 'Someone')
+                  const otherAvatar = isAnon ? null : chat.otherProfile?.avatar_url
 
                   return (
                     <div key={`listen-${chat.id}`} style={{ padding: '14px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
@@ -1281,7 +1276,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       const { data: aiInserted } = await supabase.from('messages')
         .insert({ 
           session_id: activeSessionId, 
-          sender_id: '00000000-0000-0000-0000-000000000001', 
+          sender_id: currentUserId, 
           content: aiText, 
           is_ai_msg: true 
         })
@@ -1323,32 +1318,16 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
 
   function insertEmoji(e) { setInput(i => i + e); inputRef.current?.focus() }
 
-  // --- Inside ChatView.js ---
-
   const otherName = (() => {
-    // 1. Look for the post in your hardcoded list first
-    const seed = SEED_POSTS.find(s => s.id === post?.id || s.id === post?.post_id);
-
-    if (seed) {
-      return seed.profiles?.full_name?.split(' ')[0] ?? 'Someone';
-    }
-    
-    // 2. Fallback for AI Listeners (General AI)
-    if (isAISession) return 'AI Listener';
-
-    // 3. Normal human profile logic
-    if (post?.is_anonymous) return 'Anonymous';
-    return otherProfile?.full_name?.split(' ')[0] ?? (isExpresser ? 'Listener' : 'Someone');
-  })();
-
+    if (isSeedSession) return post?.is_anonymous ? 'Anonymous' : (post?.profiles?.full_name?.split(' ')[0] ?? 'Someone')
+    if (post?.is_anonymous) return 'Anonymous'
+    return otherProfile?.full_name?.split(' ')[0] ?? (isExpresser ? 'Listener' : 'Someone')
+  })()
   const otherAvatar = (() => {
-    const seed = SEED_POSTS.find(s => s.id === post?.id || s.id === post?.post_id);
-    
-    if (seed) return seed.profiles?.avatar_url ?? null;
-    if (isAISession || post?.is_anonymous) return null;
-    return otherProfile?.avatar_url ?? null;
-  })();
-
+    if (isSeedSession) return post?.is_anonymous ? null : (post?.profiles?.avatar_url ?? null)
+    if (post?.is_anonymous) return null
+    return otherProfile?.avatar_url ?? null
+  })()
   const myName = myProfile?.full_name?.split(' ')[0] ?? 'You'
   const myAvatar = myProfile?.avatar_url ?? null
 
