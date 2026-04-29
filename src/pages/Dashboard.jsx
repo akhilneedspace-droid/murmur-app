@@ -1128,7 +1128,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
   useEffect(() => {
     const hasAIReply = messages.some(m => m.is_ai_msg || (m.sender_id === 'other' && m.id.startsWith('ai-')))
     // Greet if: real AI session, not seed, not loading, AI hasn't spoken yet, have post content
-    if ((!isAISession && !isSeedSession) || loading || hasAIReply || !post?.content || !sessionId) return
+    if (!(isAISession || isSeedSession) || loading || hasAIReply || !post?.content || !sessionId) return
     let fired = false
     async function aiGreet() {
       if (fired) return; fired = true
