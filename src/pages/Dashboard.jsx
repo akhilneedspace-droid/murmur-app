@@ -9,7 +9,7 @@ import { getAIResponse } from '../lib/ai'
 function getGreeting() {
   const h = new Date().getHours()
   if (h >= 23 || h < 4)  return 'Still '
-  if (h >= 4  && h < 12) return 'Good Mo'
+  if (h >= 4  && h < 12) return 'Good M'
   if (h >= 12 && h < 16) return 'Good AA'
   if (h >= 16 && h < 18) return 'Goodev'
   if (h >= 18 && h < 20) return 'Hope your evening is  '
@@ -1296,13 +1296,19 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
   // Handle AI Response
   if (isAIChat) {
     setAiThinking(true)
-    const history = updated.map(m => ({
-      role: m.sender_id === currentUserId ? 'user' : 'assistant',
-      content: m.content
-    }))
+    // Ensure the history roles are clean strings
+      const history = updated.map(m => ({
+        role: (m.sender_id === currentUserId) ? 'user' : 'assistant',
+        content: String(m.content)
+      }));
+
+      // FOR SEED POSTS: Aisha is the 'expresser'. 
+  // If you are talking to a seed post, the AI role MUST be 'expresser'.
+  const aiRole = isSeedSession ? 'expresser' : 'listener';
     
-    const aiText = await getAIResponse(history, isSeedSession ? 'expresser' : 'listener', post?.content)
-    setAiThinking(false)
+    try {
+    const aiText = await getAIResponse(history, aiRole, post?.content);
+    setAiThinking(false);
 
     if (aiText) {
       setOtherTyping(true)
@@ -1337,6 +1343,10 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
           setMessages(prev => [...prev, aiInserted])
         }
     }
+  }
+  catch (err) {
+    console.error("AI Generation Failed:", err);
+    setAiThinking(false);
   }
 }
 
@@ -1569,4 +1579,5 @@ function ListenerFAB({ sessions, currentSessionId, onSwitch }) {
     </div>,
     document.body
   )
+}
 }
