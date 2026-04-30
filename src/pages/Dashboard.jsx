@@ -763,29 +763,18 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
 function PostCard({ post, delay, onClick }) {
   const [hovered, setHovered] = useState(false)
 
- // ADD THIS LINE: Check if this post is one of your seeds (Aisha, Priya, etc.)
-
+  // 1. Find the matching seed data to get the correct name/avatar
   const seed = SEED_POSTS.find(s => s.id === post.id);
 
-
-
-  // Update name logic to check the seed first
-
+  // 2. Logic: If it's a seed, use the seed's profile name. Otherwise, check anonymity.
   const name = seed 
-
     ? (seed.is_anonymous ? 'Anonymous' : (seed.profiles?.full_name?.split(' ')[0] ?? 'Someone'))
-
     : (post.is_anonymous ? 'Anonymous' : (post.profiles?.full_name?.split(' ')[0] ?? 'Someone'));
 
-
-
-  // Update avatar logic to check the seed first
-
   const avatarUrl = seed
-
     ? (seed.is_anonymous ? null : seed.profiles?.avatar_url)
-
     : (post.is_anonymous ? null : post.profiles?.avatar_url);
+
   const timeAgo = d => { const m = Math.floor((Date.now() - new Date(d)) / 60000); if (m < 1) return 'just now'; if (m < 60) return `${m} min ago`; return `${Math.floor(m / 60)}h ago` }
   return (
     <button onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
