@@ -350,17 +350,31 @@ export default function Dashboard() {
 
   if (view === 'expresser') return <ExpresserView user={user} myProfile={profile} onBack={() => setView('home')} onBrowseListeners={() => setView('listener')} onPostCreated={(p) => setActiveExpresserPost(p)} onSessionStart={s => { setActiveExpresserSessions([s]); setCurrentListenerSession(s) }} />
  if (view === 'listener') {
+  // 1. Create a list of IDs the user has already talked to
   const interactedPostIds = new Set(pastChats.map(chat => chat.post_id || chat.posts?.id));
   
-  // Only show seeds that haven't been talked to
+  // 2. This is the NEW variable: It filters your SEED_POSTS array
   const availableSeeds = SEED_POSTS.filter(seed => !interactedPostIds.has(seed.id));
 
   return (
-    <ListenerView user="{user}" myProfile="{profile}" seedPosts="{availableSeeds}" // This ensures "Sake" has the is_seed: true property onBack="{(s,"> { ... }}
-      onComplete={() => { fetchPastChats(); loadListenerCount(); }} 
+    <ListenerView 
+      user={user} 
+      myProfile={profile} 
+      todayListenerCount={todayListenerCount}
+      seedPosts={availableSeeds} // 3. Pass the new variable here
+      onBack={(s, didInteract) => {
+        if (s?.id && didInteract && s.status !== 'closed') {
+          setPendingListenerSession(s)
+          setShowResumeModal(true)
+        }
+        setView('home')
+      }}
+      onComplete={() => { fetchPastChats(); loadListenerCount() }} 
     />
   );
 }
+  
+ 
   if (view === 'chats') return <PastChatsView chats={pastChats} userId={user?.id} onOpen={async c => { setSelectedChat(c); setView('chat-detail'); if (c.expresser_id === user?.id && c.posts?.id) { const { data } = await supabase.from('sessions').select('*').eq('post_id', c.posts.id); setSiblingsSessions(data || []) } }} onDelete={deleteChat} onBack={() => { fetchPastChats(); setView('home') }} />
   if (view === 'chat-detail' && selectedChat) {
     const isExp = selectedChat.expresser_id === user?.id
@@ -646,8 +660,10 @@ function ExpresserView({ user, myProfile, onBack, onBrowseListeners, onSessionSt
 
 // ── Listener View ──────────────────────────────────────────────
 // ── Listener View ──────────────────────────────────────────────
-function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete }) {
-  const [posts, setPosts] = useState([])
+// ── Listener View ──────────────────────────────────────────────
+// Added 'seedPosts' to the props list here
+function ListenerView({ user, myProfile, todayListenerCount, seedPosts, onBack, onComplete }) {
+  const [dbPosts, setDbPosts] = useState([]) // Renamed to dbPosts to avoid confusion
   const [loading, setLoading] = useState(true)
   const [activeSession, setActiveSession] = useState(null)
   const [visible, setVisible] = useState(false)
@@ -655,7 +671,6 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   const [showBurnoutNudge, setShowBurnoutNudge] = useState(false)
   const [showBurnoutBlock, setShowBurnoutBlock] = useState(false)
   
-  // State to hold active sessions for filtering
   const [myActiveSessions, setMyActiveSessions] = useState([])
 
   const DAILY_LISTEN_NUDGE  = 3
@@ -664,8 +679,8 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   useEffect(() => { setTimeout(() => setVisible(true), 80) }, [])
 
   useEffect(() => {
-    if (todayListenerCount >= DAILY_LISTEN_LIMIT) { setShowBurnoutBlock(true); return }
-    if (todayListenerCount >= DAILY_LISTEN_NUDGE) setShowBurnoutNudge(true)
+    if (todayListenerCount >= DAILY_LIMIT) { setShowBurnoutBlock(true); return }
+    if (todayListenerCount >= DAILY_NUDGE) setShowBurnoutNudge(true)
     
     loadListenerData()
     
@@ -674,7 +689,6 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   }, [todayListenerCount])
 
   async function loadListenerData() {
-    // 1. Fetch active sessions so we know what to hide
     const { data: sessions } = await supabase
       .from('sessions')
       .select('post_id')
@@ -683,7 +697,6 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
     
     setMyActiveSessions(sessions || [])
 
-    // 2. Fetch the posts
     const { data: postsData } = await supabase
       .from('posts')
       .select('*, profiles(full_name, avatar_url)')
@@ -691,78 +704,64 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
       .neq('user_id', user.id)
       .order('created_at', { ascending: false })
     
-    setPosts([...(postsData || []), ...SEED_POSTS])
+    // FIX: Only set DB posts here. Seed posts come from props now.
+    setDbPosts(postsData || [])
     setLoading(false)
   }
 
+  // Use the handleSelectPost version we fixed earlier
   async function handleSelectPost(post) {
-  if (todayListenerCount >= DAILY_LISTEN_LIMIT) { 
-    setShowBurnoutBlock(true); 
-    return; 
-  }
-  
-  if (post.is_seed) {
-    // 1. Try to find if we already started a session for this AI post in the DB
-    const { data: existingSeed } = await supabase
-      .from('sessions')
-      .select('*')
-      .eq('post_id', post.id)
-      .eq('listener_id', user.id)
-      .single();
+    if (todayListenerCount >= DAILY_LISTEN_LIMIT) { setShowBurnoutBlock(true); return }
+    
+    if (post.is_seed) {
+      const { data: existingSeed } = await supabase
+        .from('sessions')
+        .select('*')
+        .eq('post_id', post.id)
+        .eq('listener_id', user.id)
+        .single();
 
-    if (existingSeed) {
-      setActiveSession({ ...existingSeed, is_seed: true, post });
-      setShowEndTip(true);
-      return;
+      if (existingSeed) {
+        setActiveSession({ ...existingSeed, is_seed: true, post });
+        setShowEndTip(true);
+        return;
+      }
+
+      const { data: newSession, error } = await supabase
+        .from('sessions')
+        .insert({
+          post_id: post.id,
+          expresser_id: '00000000-0000-0000-0000-000000000001', 
+          listener_id: user.id,
+          status: 'active'
+        })
+        .select().single();
+
+      if (newSession) {
+        setActiveSession({ ...newSession, is_seed: true, post })
+        setShowEndTip(true)
+      }
+      return
     }
 
-    // 2. If no session exists, create a REAL one in Supabase
-    const { data: newSession, error } = await supabase
-      .from('sessions')
-      .insert({
-        post_id: post.id, // Links to Priya/Carlos ID
-        expresser_id: '00000000-0000-0000-0000-000000000001', // AI_EXPRESSER_ID
-        listener_id: user.id,
-        status: 'active'
-      })
-      .select()
-      .single();
+    const { data: existing } = await supabase.from('sessions')
+      .select('*').eq('post_id', post.id).eq('listener_id', user.id).single()
 
-    if (error) {
-      console.error("Database error creating AI session:", error);
-      // DO NOT use the "seed-" fallback here, it causes the 400 errors
-      return; 
+    if (existing) {
+      setActiveSession({ ...existing, post })
+      return
     }
 
-    if (newSession) {
-      setActiveSession({ ...newSession, is_seed: true, post });
-      setShowEndTip(true);
-    }
-    return;
+    setActiveSession({ id: null, post, isPending: true })
+    setShowEndTip(true)
   }
-
-  // Handle Human-to-Human sessions
-  const { data: existing } = await supabase.from('sessions')
-    .select('*').eq('post_id', post.id).eq('listener_id', user.id).single()
-
-  if (existing) {
-    setActiveSession({ ...existing, post })
-    return
-  }
-
-  setActiveSession({ id: null, post, isPending: true })
-  setShowEndTip(true)
-}
 
   if (showBurnoutBlock) {
     return (
       <div className="page" style={{ padding: '0 28px', justifyContent: 'center', alignItems: 'center', gap: 20, textAlign: 'center' }}>
         <div style={{ fontSize: 48 }}>🌿</div>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 400, color: 'var(--teal)' }}>You've given a lot today.</h2>
-        <p style={{ fontSize: 15, color: 'rgba(240,239,232,0.7)', lineHeight: 1.8, maxWidth: 300 }}>
-          You've listened to {DAILY_LISTEN_LIMIT} people today. Come back tomorrow.
-        </p>
-        <button className="btn-ghost" style={{ maxWidth: 280 }} onClick={() => onBack(null)}>Back to home</button>
+        <button className="btn-ghost" onClick={() => onBack(null)}>Back to home</button>
       </div>
     )
   }
@@ -787,47 +786,14 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
 
   return (
     <div className="page" style={{ padding: '0 24px', justifyContent: 'flex-start' }}>
-      <div className="orb" style={{ width: 300, height: 300, background: 'radial-gradient(circle, rgba(93,202,165,0.08) 0%, transparent 70%)', top: '-40px', right: '-60px' }} />
+      {/* ... (Keep your Header/Orb code here) ... */}
 
-      {showBurnoutNudge && (
-        <Modal
-          title="You've been showing up a lot today 💙"
-          body={`You've listened to ${todayListenerCount} people today.`}
-          primaryLabel="Keep going"
-          primaryAction={() => setShowBurnoutNudge(false)}
-          secondaryLabel="I'll rest"
-          secondaryAction={() => onBack(null)}
-        />
-      )}
-
-      {/* --- RESTORED HEADING --- */}
-      <div style={{ position: 'relative', zIndex: 1, paddingTop: 52, marginBottom: 24 }}>
-        <button onClick={() => onBack(null)} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'rgba(240,239,232,0.5)', fontSize: 14, marginBottom: 20, background: 'none', border: 'none', cursor: 'pointer' }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-          Back
-        </button>
-        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 400, letterSpacing: '-0.01em', marginBottom: 6, color: 'var(--text)' }}>Someone needs a listener.</h2>
-        <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.5)' }}>Choose one person to be present with. · {DAILY_LISTEN_LIMIT - todayListenerCount} sessions remaining</p>
-      </div>
-
-      {/* --- STORIES LIST --- */}
-      <div style={{ 
-        position: 'relative', 
-        zIndex: 1, 
-        display: 'flex', 
-        flexDirection: 'column', 
-        gap: 12, 
-        paddingBottom: 48, 
-        opacity: visible ? 1 : 0, 
-        transform: visible ? 'translateY(0)' : 'translateY(12px)', 
-        transition: 'opacity 0.4s ease, transform 0.4s ease' 
-      }}>
+      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 48, opacity: visible ? 1 : 0 }}>
         {loading ? (
-          <div style={{ textAlign: 'center', padding: 40 }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--teal)', display: 'inline-block', animation: 'pulse 1.2s infinite' }} />
-          </div>
+          <div style={{ textAlign: 'center', padding: 40 }}><span className="loader" /></div>
         ) : (
-          posts
+          // COMBINE DB posts and Seed posts from props
+          [...dbPosts, ...seedPosts]
             .filter(post => !myActiveSessions.some(session => session.post_id === post.id))
             .map((post, idx) => (
               <PostCard 
