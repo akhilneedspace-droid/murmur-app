@@ -350,32 +350,14 @@ export default function Dashboard() {
 
   if (view === 'expresser') return <ExpresserView user={user} myProfile={profile} onBack={() => setView('home')} onBrowseListeners={() => setView('listener')} onPostCreated={(p) => setActiveExpresserPost(p)} onSessionStart={s => { setActiveExpresserSessions([s]); setCurrentListenerSession(s) }} />
  if (view === 'listener') {
-  // 1. Map all IDs from existing conversations (both Human and AI)
-  // We check both .post_id and .posts?.id to be safe with your data structure
-  const interactedPostIds = new Set(
-    pastChats.map(chat => chat.post_id || chat.posts?.id)
-  );
-
-  // 2. Filter SEED_POSTS to only show ones you haven't talked to yet
+  const interactedPostIds = new Set(pastChats.map(chat => chat.post_id || chat.posts?.id));
+  
+  // Only show seeds that haven't been talked to
   const availableSeeds = SEED_POSTS.filter(seed => !interactedPostIds.has(seed.id));
 
   return (
-    <ListenerView 
-      user={user} 
-      myProfile={profile} 
-      todayListenerCount={todayListenerCount}
-      seedPosts={availableSeeds} // Pass the filtered list here
-      onBack={(s, didInteract) => {
-        if (s?.id && didInteract && s.status !== 'closed') {
-          setPendingListenerSession(s)
-          setShowResumeModal(true)
-        }
-        setView('home')
-      }}
-      onComplete={() => { 
-        fetchPastChats(); 
-        loadListenerCount(); 
-      }} 
+    <ListenerView user="{user}" myProfile="{profile}" seedPosts="{availableSeeds}" // This ensures "Sake" has the is_seed: true property onBack="{(s,"> { ... }}
+      onComplete={() => { fetchPastChats(); loadListenerCount(); }} 
     />
   );
 }
