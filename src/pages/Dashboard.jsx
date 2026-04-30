@@ -937,8 +937,18 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
                   const isOngoing = chat.status === 'active'
                   const preview = chat.posts?.content?.slice(0, 100) ?? ''
                   const isAnon = chat.posts?.is_anonymous
-                  const otherName = isAnon ? 'Anonymous' : (chat.otherProfile?.full_name?.split(' ')[0] ?? 'Someone')
-                  const otherAvatar = isAnon ? null : chat.otherProfile?.avatar_url
+                 // 1. Identify if this conversation belongs to a Seed Post
+                  const seedData = SEED_POSTS.find(s => s.id === chat.post_id);
+
+                  // 2. Determine the name: Seed Name -> Profile Name -> Fallback
+                  const otherName = seedData 
+                    ? (seedData.profiles?.full_name?.split(' ')[0] ?? 'Someone')
+                    : (chat.otherProfile?.full_name?.split(' ')[0] ?? 'Someone');
+
+                  // 3. Determine the avatar
+                  const otherAvatar = seedData
+                    ? seedData.profiles?.avatar_url
+                    : chat.otherProfile?.avatar_url;
 
                   return (
                     <div key={`listen-${chat.id}`} style={{ padding: '14px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
