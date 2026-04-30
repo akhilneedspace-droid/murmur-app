@@ -177,21 +177,24 @@ export default function Dashboard() {
     setTodayListenerCount(todayCount ?? 0)
   }
 
-  async function fetchPastChats() {
+ async function fetchPastChats() {
   const AI_EXPRESSER_ID = '00000000-0000-0000-0000-000000000001'
-  const { data: sessions } = await supabase
+  const { data: sessions, error } = await supabase
     .from('sessions')
     .select('*, posts(content, emotion_tag, is_anonymous, user_id, id)')
     .or(`expresser_id.eq.${user.id},listener_id.eq.${user.id}`)
     .order('created_at', { ascending: false })
 
-  if (!sessions) { setPastChats([]); return }
+  if (error || !sessions) { 
+    console.error("Error fetching chats:", error);
+    return; 
+  }
 
   const enriched = await Promise.all(
     sessions.map(async (session) => {
-      // 1. Handle AI Expresser sessions
+      // 1. Handle AI Sessions (Matches by Expresser ID)
       if (session.expresser_id === AI_EXPRESSER_ID) {
-        // Find the matching seed post to get the real name (Priya, Carlos, etc.)
+        // Match the session's post_id to your SEED_POSTS array
         const seed = SEED_POSTS.find(s => s.id === session.post_id || s.id === session.posts?.id);
         
         return { 
@@ -204,7 +207,7 @@ export default function Dashboard() {
         }
       }
 
-      // 2. Handle Human-to-Human sessions
+      // 2. Handle Human Sessions
       const otherId = session.expresser_id === user.id ? session.listener_id : session.expresser_id
       let otherProfile = null
       
@@ -216,17 +219,10 @@ export default function Dashboard() {
     })
   )
 
-  setPastChats(prev => {
-    const cleaned = enriched.filter(s =>
-      !s.deleted_by || !Array.isArray(s.deleted_by) || !s.deleted_by.includes(user.id)
-    )
-
-    const existingIds = new Set(cleaned.map(c => c.id))
-    // We only keep old state items if they are "seed" chats that haven't been saved to Supabase yet
-    const merged = [...cleaned, ...prev.filter(c => c.is_seed && !existingIds.has(c.id))]
-
-    return merged
-  })
+  // Filter out deleted chats and set state
+  setPastChats(enriched.filter(s =>
+    !s.deleted_by || !Array.isArray(s.deleted_by) || !s.deleted_by.includes(user.id)
+  ));
 }
 
   // Load seed chats from localStorage and add to pastChats
@@ -718,39 +714,63 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   }
 
   async function handleSelectPost(post) {
-    if (todayListenerCount >= DAILY_LISTEN_LIMIT) { setShowBurnoutBlock(true); return }
-    
-    if (post.is_seed) {
-      const { data: newSession, error } = await supabase
-        .from('sessions')
-        .insert({
-          post_id: post.id,
-          expresser_id: '00000000-0000-0000-0000-000000000001', 
-          listener_id: user.id,
-          status: 'active'
-        })
-        .select().single()
-
-      if (newSession) {
-        setActiveSession({ id: newSession.id, is_seed: true, post })
-      } else {
-        setActiveSession({ id: `seed-${post.id}`, is_seed: true, post })
-      }
-      setShowEndTip(true)
-      return
-    }
-
-    const { data: existing } = await supabase.from('sessions')
-      .select('*').eq('post_id', post.id).eq('listener_id', user.id).single()
-
-    if (existing) {
-      setActiveSession({ ...existing, post })
-      return
-    }
-
-    setActiveSession({ id: null, post, isPending: true })
-    setShowEndTip(true)
+  if (todayListenerCount >= DAILY_LISTEN_LIMIT) { 
+    setShowBurnoutBlock(true); 
+    return; 
   }
+  
+  if (post.is_seed) {
+    // 1. Try to find if we already started a session for this AI post in the DB
+    const { data: existingSeed } = await supabase
+      .from('sessions')
+      .select('*')
+      .eq('post_id', post.id)
+      .eq('listener_id', user.id)
+      .single();
+
+    if (existingSeed) {
+      setActiveSession({ ...existingSeed, is_seed: true, post });
+      setShowEndTip(true);
+      return;
+    }
+
+    // 2. If no session exists, create a REAL one in Supabase
+    const { data: newSession, error } = await supabase
+      .from('sessions')
+      .insert({
+        post_id: post.id, // Links to Priya/Carlos ID
+        expresser_id: '00000000-0000-0000-0000-000000000001', // AI_EXPRESSER_ID
+        listener_id: user.id,
+        status: 'active'
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Database error creating AI session:", error);
+      // DO NOT use the "seed-" fallback here, it causes the 400 errors
+      return; 
+    }
+
+    if (newSession) {
+      setActiveSession({ ...newSession, is_seed: true, post });
+      setShowEndTip(true);
+    }
+    return;
+  }
+
+  // Handle Human-to-Human sessions
+  const { data: existing } = await supabase.from('sessions')
+    .select('*').eq('post_id', post.id).eq('listener_id', user.id).single()
+
+  if (existing) {
+    setActiveSession({ ...existing, post })
+    return
+  }
+
+  setActiveSession({ id: null, post, isPending: true })
+  setShowEndTip(true)
+}
 
   if (showBurnoutBlock) {
     return (
