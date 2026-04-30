@@ -1298,7 +1298,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       const { data: aiInserted } = await supabase.from('messages')
         .insert({ 
           session_id: activeSessionId, 
-          sender_id: currentUserId, 
+          sender_id: '00000000-0000-0000-0000-000000000001', 
           content: aiText, 
           is_ai_msg: true 
         })
