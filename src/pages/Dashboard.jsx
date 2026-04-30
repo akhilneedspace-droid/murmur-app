@@ -725,7 +725,7 @@ function ListenerView({ user, myProfile, todayListenerCount, seedPosts, onBack, 
         .select('*')
         .eq('post_id', post.id)
         .eq('listener_id', user.id)
-        .single();
+        .maybeSingle();
 
       if (existingSeed) {
         setActiveSession({ ...existingSeed, is_seed: true, post });
@@ -733,31 +733,31 @@ function ListenerView({ user, myProfile, todayListenerCount, seedPosts, onBack, 
         return;
       }
 
-      const { data: newSession, error } = await supabase
-        .from('sessions')
-        .insert({
-          post_id: post.id,
-          expresser_id: '00000000-0000-0000-0000-000000000001', 
-          listener_id: user.id,
-          status: 'active'
-        })
-        .select()
-        .single();
+      const { data: newSession, error: createError } = await supabase
+      .from('sessions')
+      .insert({
+        post_id: post.id,
+        expresser_id: '00000000-0000-0000-0000-000000000001', 
+        listener_id: user.id,
+        status: 'active'
+      })
+      .select()
+      .single();
 
-      if (error) {
-        console.error("Database error creating AI session:", error);
-        return; 
-      }
-
-      if (newSession) {
-        setActiveSession({ ...newSession, is_seed: true, post });
-        setShowEndTip(true);
-      }
-      return;
+    if (createError) {
+      console.error("Database error creating AI session:", createError);
+      return; 
     }
 
+      if (newSession) {
+      setActiveSession({ ...newSession, is_seed: true, post });
+      setShowEndTip(true);
+    }
+    return;
+  }
+
     const { data: existing } = await supabase.from('sessions')
-      .select('*').eq('post_id', post.id).eq('listener_id', user.id).single()
+      .select('*').eq('post_id', post.id).eq('listener_id', user.id).maybeSingle();
 
     if (existing) {
       setActiveSession({ ...existing, post })
@@ -856,24 +856,40 @@ function ListenerView({ user, myProfile, todayListenerCount, seedPosts, onBack, 
 }
 
 function PostCard({ post, delay, onClick }) {
-  const [hovered, setHovered] = useState(false)
+  const [hovered, setHovered] = useState(false);
 
-  // 1. Find the matching seed data to get the correct name/avatar
-  const seed = SEED_POSTS.find(s => s.id === post.id);
+  // Instead of searching SEED_POSTS, use the 'post' object directly.
+  // It already has is_seed, is_anonymous, and profiles data.
+  const name = post.is_anonymous 
+    ? 'Anonymous' 
+    : (post.profiles?.full_name?.split(' ')[0] ?? 'Someone');
 
-  // 2. Logic: If it's a seed, use the seed's profile name. Otherwise, check anonymity.
-  const name = seed 
-    ? (seed.is_anonymous ? 'Anonymous' : (seed.profiles?.full_name?.split(' ')[0] ?? 'Someone'))
-    : (post.is_anonymous ? 'Anonymous' : (post.profiles?.full_name?.split(' ')[0] ?? 'Someone'));
+  const avatarUrl = post.is_anonymous ? null : post.profiles?.avatar_url;
 
-  const avatarUrl = seed
-    ? (seed.is_anonymous ? null : seed.profiles?.avatar_url)
-    : (post.is_anonymous ? null : post.profiles?.avatar_url);
+  const timeAgo = d => { 
+    if(!d) return 'just now';
+    const m = Math.floor((Date.now() - new Date(d)) / 60000); 
+    if (m < 1) return 'just now'; 
+    if (m < 60) return `${m} min ago`; 
+    return `${Math.floor(m / 60)}h ago`; 
+  };
 
-  const timeAgo = d => { const m = Math.floor((Date.now() - new Date(d)) / 60000); if (m < 1) return 'just now'; if (m < 60) return `${m} min ago`; return `${Math.floor(m / 60)}h ago` }
   return (
-    <button onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
-      style={{ width: '100%', textAlign: 'left', padding: 18, background: hovered ? 'rgba(93,202,165,0.04)' : 'var(--bg2)', border: `1px solid ${hovered ? 'rgba(93,202,165,0.35)' : 'var(--border)'}`, borderRadius: 'var(--radius)', cursor: 'pointer', transition: 'all var(--transition)' }}>
+    <button 
+      onClick={(e) => {
+        e.preventDefault(); // Safety to ensure the button click triggers
+        onClick();
+      }} 
+      onMouseEnter={() => setHovered(true)} 
+      onMouseLeave={() => setHovered(false)}
+      style={{ 
+        width: '100%', textAlign: 'left', padding: 18, 
+        background: hovered ? 'rgba(93,202,165,0.04)' : 'var(--bg2)', 
+        border: `1px solid ${hovered ? 'rgba(93,202,165,0.35)' : 'var(--border)'}`, 
+        borderRadius: 'var(--radius)', cursor: 'pointer', transition: 'all var(--transition)',
+        display: 'block' // Ensures the button takes up the full width/height for clicking
+      }}
+    >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Avatar url={avatarUrl} name={name} size={28} />
@@ -887,7 +903,7 @@ function PostCard({ post, delay, onClick }) {
         <span style={{ fontSize: 12, marginLeft: 'auto', color: hovered ? 'var(--teal)' : 'rgba(240,239,232,0.4)', transition: 'color var(--transition)' }}>{hovered ? 'Start listening →' : 'Tap to listen'}</span>
       </div>
     </button>
-  )
+  );
 }
 
 function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
