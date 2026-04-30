@@ -176,48 +176,56 @@ export default function Dashboard() {
   }
 
   async function fetchPastChats() {
-    const AI_EXPRESSER_ID = '00000000-0000-0000-0000-000000000001'
-    const { data: sessions } = await supabase
-      .from('sessions')
-      .select('*, posts(content, emotion_tag, is_anonymous, user_id, id)')
-      .or(`expresser_id.eq.${user.id},listener_id.eq.${user.id}`)
-      .order('created_at', { ascending: false })
+  const AI_EXPRESSER_ID = '00000000-0000-0000-0000-000000000001'
+  const { data: sessions } = await supabase
+    .from('sessions')
+    .select('*, posts(content, emotion_tag, is_anonymous, user_id, id)')
+    .or(`expresser_id.eq.${user.id},listener_id.eq.${user.id}`)
+    .order('created_at', { ascending: false })
 
-    if (!sessions) { setPastChats([]); return }
+  if (!sessions) { setPastChats([]); return }
 
-    const enriched = await Promise.all(
-  sessions.map(async (session) => {
-    // Check for your AI Expresser ID
-    if (session.expresser_id === '00000000-0000-0000-0000-000000000001') {
-      return { 
-        ...session, 
-        otherProfile: { full_name: 'AI Expresser', avatar_url: null }, 
-        is_ai_seed: true 
-      }
-    }
-        const otherId = session.expresser_id === user.id ? session.listener_id : session.expresser_id
-        let otherProfile = null
-        if (otherId && otherId !== AI_EXPRESSER_ID) {
-          const { data } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', otherId).single()
-          otherProfile = data ?? null
+  const enriched = await Promise.all(
+    sessions.map(async (session) => {
+      // 1. Handle AI Expresser sessions
+      if (session.expresser_id === AI_EXPRESSER_ID) {
+        // Find the matching seed post to get the real name (Priya, Carlos, etc.)
+        const seed = SEED_POSTS.find(s => s.id === session.post_id || s.id === session.posts?.id);
+        
+        return { 
+          ...session, 
+          otherProfile: { 
+            full_name: seed?.profiles?.full_name ?? 'AI Expresser', 
+            avatar_url: seed?.profiles?.avatar_url ?? null 
+          }, 
+          is_ai_seed: true 
         }
-        return { ...session, otherProfile }
-      })
-    )
+      }
 
-    //setPastChats(enriched.filter(s => !s.deleted_by || !Array.isArray(s.deleted_by) || !s.deleted_by.includes(user.id))) chatgpt try
-    setPastChats(prev => {
-  const cleaned = enriched.filter(s =>
-    !s.deleted_by || !Array.isArray(s.deleted_by) || !s.deleted_by.includes(user.id)
+      // 2. Handle Human-to-Human sessions
+      const otherId = session.expresser_id === user.id ? session.listener_id : session.expresser_id
+      let otherProfile = null
+      
+      if (otherId && otherId !== AI_EXPRESSER_ID) {
+        const { data } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', otherId).single()
+        otherProfile = data ?? null
+      }
+      return { ...session, otherProfile }
+    })
   )
 
-  // keep existing seed chats
-  const existingIds = new Set(cleaned.map(c => c.id))
-  const merged = [...cleaned, ...prev.filter(c => c.is_seed && !existingIds.has(c.id))]
+  setPastChats(prev => {
+    const cleaned = enriched.filter(s =>
+      !s.deleted_by || !Array.isArray(s.deleted_by) || !s.deleted_by.includes(user.id)
+    )
 
-  return merged
-})
-  }
+    const existingIds = new Set(cleaned.map(c => c.id))
+    // We only keep old state items if they are "seed" chats that haven't been saved to Supabase yet
+    const merged = [...cleaned, ...prev.filter(c => c.is_seed && !existingIds.has(c.id))]
+
+    return merged
+  })
+}
 
   // Load seed chats from localStorage and add to pastChats
   function loadSeedChats() {
@@ -343,16 +351,36 @@ export default function Dashboard() {
   }
 
   if (view === 'expresser') return <ExpresserView user={user} myProfile={profile} onBack={() => setView('home')} onBrowseListeners={() => setView('listener')} onPostCreated={(p) => setActiveExpresserPost(p)} onSessionStart={s => { setActiveExpresserSessions([s]); setCurrentListenerSession(s) }} />
-  if (view === 'listener') return <ListenerView user={user} myProfile={profile} todayListenerCount={todayListenerCount}
-    onBack={(s, didInteract) => {
-      // Only show resume modal if: real session exists, listener sent at least one msg, and session still active
-      if (s?.id && didInteract && s.status !== 'closed') {
-        setPendingListenerSession(s)
-        setShowResumeModal(true)
-      }
-      setView('home')
-    }}
-    onComplete={() => { fetchPastChats(); loadListenerCount() }} />
+ if (view === 'listener') {
+  // 1. Map all IDs from existing conversations (both Human and AI)
+  // We check both .post_id and .posts?.id to be safe with your data structure
+  const interactedPostIds = new Set(
+    pastChats.map(chat => chat.post_id || chat.posts?.id)
+  );
+
+  // 2. Filter SEED_POSTS to only show ones you haven't talked to yet
+  const availableSeeds = SEED_POSTS.filter(seed => !interactedPostIds.has(seed.id));
+
+  return (
+    <ListenerView 
+      user={user} 
+      myProfile={profile} 
+      todayListenerCount={todayListenerCount}
+      seedPosts={availableSeeds} // Pass the filtered list here
+      onBack={(s, didInteract) => {
+        if (s?.id && didInteract && s.status !== 'closed') {
+          setPendingListenerSession(s)
+          setShowResumeModal(true)
+        }
+        setView('home')
+      }}
+      onComplete={() => { 
+        fetchPastChats(); 
+        loadListenerCount(); 
+      }} 
+    />
+  );
+}
   if (view === 'chats') return <PastChatsView chats={pastChats} userId={user?.id} onOpen={async c => { setSelectedChat(c); setView('chat-detail'); if (c.expresser_id === user?.id && c.posts?.id) { const { data } = await supabase.from('sessions').select('*').eq('post_id', c.posts.id); setSiblingsSessions(data || []) } }} onDelete={deleteChat} onBack={() => { fetchPastChats(); setView('home') }} />
   if (view === 'chat-detail' && selectedChat) {
     const isExp = selectedChat.expresser_id === user?.id
