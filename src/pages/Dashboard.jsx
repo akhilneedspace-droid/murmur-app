@@ -752,9 +752,35 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
         <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.5)' }}>Choose one person to be present with. · {DAILY_LISTEN_LIMIT - todayListenerCount} sessions remaining today</p>
       </div>
 
-      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 48, opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(12px)', transition: 'opacity 0.4s ease, transform 0.4s ease' }}>
-        {loading ? <div style={{ textAlign: 'center', padding: 40 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--teal)', display: 'inline-block', animation: 'pulse 1.2s infinite' }} /></div>
-          : posts.map((post, idx) => <PostCard key={post.id} post={post} delay={idx * 0.06} onClick={() => handleSelectPost(post)} />)}
+      <div style={{ 
+  position: 'relative', 
+  zIndex: 1, 
+  display: 'flex', 
+  flexDirection: 'column', 
+  gap: 12, 
+  paddingBottom: 48, 
+  opacity: visible ? 1 : 0, 
+  transform: visible ? 'translateY(0)' : 'translateY(12px)', 
+  transition: 'opacity 0.4s ease, transform 0.4s ease' 
+}}>
+  {loading ? (
+    <div style={{ textAlign: 'center', padding: 40 }}>
+      <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--teal)', display: 'inline-block', animation: 'pulse 1.2s infinite' }} />
+    </div>
+  ) : (
+    posts
+      // 1. FILTER: Only show posts that are NOT in your active conversations
+      .filter(post => !conversations.some(conv => conv.post_id === post.id))
+      // 2. MAP: Render the remaining posts
+      .map((post, idx) => (
+        <PostCard 
+          key={post.id} 
+          post={post} 
+          delay={idx * 0.06} 
+          onClick={() => handleSelectPost(post)} 
+        />
+      ))
+  )}
       </div>
     </div>
   )
@@ -1339,16 +1365,31 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
 
   function insertEmoji(e) { setInput(i => i + e); inputRef.current?.focus() }
 
-  const otherName = (() => {
-    if (isSeedSession) return post?.is_anonymous ? 'Anonymous' : (post?.profiles?.full_name?.split(' ')[0] ?? 'Someone')
-    if (post?.is_anonymous) return 'Anonymous'
-    return otherProfile?.full_name?.split(' ')[0] ?? (isExpresser ? 'Listener' : 'Someone')
-  })()
-  const otherAvatar = (() => {
-    if (isSeedSession) return post?.is_anonymous ? null : (post?.profiles?.avatar_url ?? null)
-    if (post?.is_anonymous) return null
-    return otherProfile?.avatar_url ?? null
-  })()
+const otherName = (() => {
+  // Check if this post ID exists in our SEED_POSTS array
+  const seed = SEED_POSTS.find(s => s.id === post?.id);
+  
+  if (isSeedSession && seed) {
+    return seed.profiles?.full_name?.split(' ')[0] ?? 'Someone';
+  }
+  
+  if (post?.is_anonymous) return 'Anonymous';
+  
+  // Default fallback for real users
+  return otherProfile?.full_name?.split(' ')[0] ?? (isExpresser ? 'Listener' : 'Someone');
+})();
+
+const otherAvatar = (() => {
+  const seed = SEED_POSTS.find(s => s.id === post?.id);
+  
+  if (isSeedSession && seed) {
+    return seed.profiles?.avatar_url ?? null;
+  }
+  
+  if (post?.is_anonymous) return null;
+  
+  return otherProfile?.avatar_url ?? null;
+})();
   const myName = myProfile?.full_name?.split(' ')[0] ?? 'You'
   const myAvatar = myProfile?.avatar_url ?? null
 
