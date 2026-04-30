@@ -632,7 +632,7 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   const [showBurnoutNudge, setShowBurnoutNudge] = useState(false)
   const [showBurnoutBlock, setShowBurnoutBlock] = useState(false)
   
-  // ADD THIS LINE: This creates the missing variable
+  // State to hold active sessions for filtering
   const [myActiveSessions, setMyActiveSessions] = useState([])
 
   const DAILY_LISTEN_NUDGE  = 3
@@ -644,17 +644,13 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
     if (todayListenerCount >= DAILY_LISTEN_LIMIT) { setShowBurnoutBlock(true); return }
     if (todayListenerCount >= DAILY_LISTEN_NUDGE) setShowBurnoutNudge(true)
     
-    // Call the load function
     loadListenerData()
     
     const ch = supabase.channel('open-posts').on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, loadListenerData).subscribe()
     return () => supabase.removeChannel(ch)
   }, [todayListenerCount])
 
-  // ADD THIS FUNCTION: It fetches both posts AND your current sessions
   async function loadListenerData() {
-    setLoading(true)
-    
     // 1. Fetch active sessions so we know what to hide
     const { data: sessions } = await supabase
       .from('sessions')
@@ -676,13 +672,98 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
     setLoading(false)
   }
 
-  // ... (Keep your handleSelectPost and burnout logic exactly the same) ...
+  async function handleSelectPost(post) {
+    if (todayListenerCount >= DAILY_LISTEN_LIMIT) { setShowBurnoutBlock(true); return }
+    
+    if (post.is_seed) {
+      const { data: newSession, error } = await supabase
+        .from('sessions')
+        .insert({
+          post_id: post.id,
+          expresser_id: '00000000-0000-0000-0000-000000000001', 
+          listener_id: user.id,
+          status: 'active'
+        })
+        .select().single()
 
-  // UPDATE THE RETURN STATEMENT: Use myActiveSessions instead of allListenerSessions
+      if (newSession) {
+        setActiveSession({ id: newSession.id, is_seed: true, post })
+      } else {
+        setActiveSession({ id: `seed-${post.id}`, is_seed: true, post })
+      }
+      setShowEndTip(true)
+      return
+    }
+
+    const { data: existing } = await supabase.from('sessions')
+      .select('*').eq('post_id', post.id).eq('listener_id', user.id).single()
+
+    if (existing) {
+      setActiveSession({ ...existing, post })
+      return
+    }
+
+    setActiveSession({ id: null, post, isPending: true })
+    setShowEndTip(true)
+  }
+
+  if (showBurnoutBlock) {
+    return (
+      <div className="page" style={{ padding: '0 28px', justifyContent: 'center', alignItems: 'center', gap: 20, textAlign: 'center' }}>
+        <div style={{ fontSize: 48 }}>🌿</div>
+        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 400, color: 'var(--teal)' }}>You've given a lot today.</h2>
+        <p style={{ fontSize: 15, color: 'rgba(240,239,232,0.7)', lineHeight: 1.8, maxWidth: 300 }}>
+          You've listened to {DAILY_LISTEN_LIMIT} people today. Come back tomorrow.
+        </p>
+        <button className="btn-ghost" style={{ maxWidth: 280 }} onClick={() => onBack(null)}>Back to home</button>
+      </div>
+    )
+  }
+
+  if (activeSession) {
+    return <ChatView
+      sessionId={activeSession.id}
+      isExpresser={false}
+      isSeedSession={activeSession.is_seed}
+      post={activeSession.post}
+      myProfile={myProfile}
+      currentUserId={user.id}
+      showEndTip={showEndTip}
+      onEndTipDismiss={() => setShowEndTip(false)}
+      onBack={(didInteract) => {
+        if (activeSession.is_seed) { onBack(null, false); return }
+        onBack(activeSession, didInteract)
+      }}
+      onEnd={() => { setActiveSession(null); onComplete?.(); loadListenerData() }}
+    />
+  }
+
   return (
     <div className="page" style={{ padding: '0 24px', justifyContent: 'flex-start' }}>
-      {/* ... (Keep your header and orb code the same) ... */}
-      
+      <div className="orb" style={{ width: 300, height: 300, background: 'radial-gradient(circle, rgba(93,202,165,0.08) 0%, transparent 70%)', top: '-40px', right: '-60px' }} />
+
+      {showBurnoutNudge && (
+        <Modal
+          title="You've been showing up a lot today 💙"
+          body={`You've listened to ${todayListenerCount} people today.`}
+          primaryLabel="Keep going"
+          primaryAction={() => setShowBurnoutNudge(false)}
+          secondaryLabel="I'll rest"
+          secondaryAction={() => onBack(null)}
+        />
+      )}
+
+      {/* --- RESTORED HEADING --- */}
+      <div style={{ position: 'relative', zIndex: 1, paddingTop: 52, marginBottom: 24 }}>
+        <button onClick={() => onBack(null)} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'rgba(240,239,232,0.5)', fontSize: 14, marginBottom: 20, background: 'none', border: 'none', cursor: 'pointer' }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          Back
+        </button>
+        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 400, letterSpacing: '-0.01em', marginBottom: 6, color: 'var(--text)' }}>Someone needs a listener.</h2>
+        <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.5)' }}>Choose one person to be present with. · {DAILY_LISTEN_LIMIT - todayListenerCount} sessions remaining</p>
+      </div>
+
+      {/* --- STORIES LIST --- */}
       <div style={{ 
         position: 'relative', 
         zIndex: 1, 
@@ -700,7 +781,6 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
           </div>
         ) : (
           posts
-            // We use our new state 'myActiveSessions' to hide the posts
             .filter(post => !myActiveSessions.some(session => session.post_id === post.id))
             .map((post, idx) => (
               <PostCard 
