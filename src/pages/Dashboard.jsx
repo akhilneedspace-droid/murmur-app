@@ -752,7 +752,7 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
         <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.5)' }}>Choose one person to be present with. · {DAILY_LISTEN_LIMIT - todayListenerCount} sessions remaining today</p>
       </div>
 
-      <div style={{ 
+  <div style={{ 
   position: 'relative', 
   zIndex: 1, 
   display: 'flex', 
@@ -769,9 +769,8 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
     </div>
   ) : (
     posts
-      // 1. FILTER: Only show posts that are NOT in your active conversations
-      .filter(post => !conversations.some(conv => conv.post_id === post.id))
-      // 2. MAP: Render the remaining posts
+      // We use (allListenerSessions || []) as a safety net to prevent blank screens
+      .filter(post => !(allListenerSessions || []).some(session => session.post_id === post.id))
       .map((post, idx) => (
         <PostCard 
           key={post.id} 
@@ -781,7 +780,7 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
         />
       ))
   )}
-      </div>
+</div>
     </div>
   )
 }
