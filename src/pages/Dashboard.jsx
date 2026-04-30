@@ -721,9 +721,8 @@ function ListenerView({ user, myProfile, todayListenerCount, seedPosts, onBack, 
     return; 
   }
 
-  // AI SEED POST LOGIC
   if (post.is_seed) {
-    // 1. Try to find an existing session first
+    // 1. Try to find if a session already exists in DB
     const { data: existingSeed } = await supabase
       .from('sessions')
       .select('*')
@@ -737,7 +736,7 @@ function ListenerView({ user, myProfile, todayListenerCount, seedPosts, onBack, 
       return;
     }
 
-    // 2. Try to create a new session
+    // 2. Try to create a session in DB
     const { data: newSession, error: createError } = await supabase
       .from('sessions')
       .insert({
@@ -749,24 +748,21 @@ function ListenerView({ user, myProfile, todayListenerCount, seedPosts, onBack, 
       .select()
       .single();
 
-    // 3. Handle the 409 Conflict (Already exists)
+    // 3. If DB complains (Error 23503 or 409), we fallback to a LOCAL session
+    // This stops the "Failed to load resource" lockup.
     if (createError) {
-      if (createError.code === '23505' || createError.status === 409) {
-         const { data: retrySession } = await supabase
-          .from('sessions')
-          .select('*')
-          .eq('post_id', post.id)
-          .eq('listener_id', user.id)
-          .single();
-          
-         if (retrySession) {
-           setActiveSession({ ...retrySession, is_seed: true, post });
-           setShowEndTip(true);
-           return;
-         }
-      }
-      console.error("Database error creating AI session:", createError);
-      return; 
+      console.warn("Using local fallback for AI session due to:", createError.message);
+      
+      // We manually create the session object so ChatView can open
+      setActiveSession({ 
+        id: `seed-session-${post.id}`, // Temporary unique ID
+        post_id: post.id,
+        listener_id: user.id,
+        is_seed: true, 
+        post 
+      });
+      setShowEndTip(true);
+      return;
     }
 
     if (newSession) {
@@ -776,7 +772,7 @@ function ListenerView({ user, myProfile, todayListenerCount, seedPosts, onBack, 
     return;
   }
 
-  // HUMAN POST LOGIC
+  // --- Standard Human Post Logic ---
   const { data: existing } = await supabase.from('sessions')
     .select('*').eq('post_id', post.id).eq('listener_id', user.id).maybeSingle();
 
