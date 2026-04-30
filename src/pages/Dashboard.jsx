@@ -713,34 +713,32 @@ function ListenerView({ user, myProfile, todayListenerCount, seedPosts, onBack, 
     setLoading(false)
   }
 
-  async function handleSelectPost(post) {
-
-    console.log("Post Clicked:", post.id, "Is Seed?", post.is_seed);
+ async function handleSelectPost(post) {
+  console.log("Post Clicked:", post.id, "Is Seed?", post.is_seed);
 
   if (todayListenerCount >= DAILY_LISTEN_LIMIT) { 
     setShowBurnoutBlock(true); 
     return; 
   }
-    if (todayListenerCount >= DAILY_LISTEN_LIMIT) { 
-      setShowBurnoutBlock(true); 
-      return; 
+
+  // AI SEED POST LOGIC
+  if (post.is_seed) {
+    // 1. Try to find an existing session first
+    const { data: existingSeed } = await supabase
+      .from('sessions')
+      .select('*')
+      .eq('post_id', post.id)
+      .eq('listener_id', user.id)
+      .maybeSingle();
+
+    if (existingSeed) {
+      setActiveSession({ ...existingSeed, is_seed: true, post });
+      setShowEndTip(true);
+      return;
     }
-  
-    if (post.is_seed) {
-      const { data: existingSeed } = await supabase
-        .from('sessions')
-        .select('*')
-        .eq('post_id', post.id)
-        .eq('listener_id', user.id)
-        .maybeSingle();
 
-      if (existingSeed) {
-        setActiveSession({ ...existingSeed, is_seed: true, post });
-        setShowEndTip(true);
-        return;
-      }
-
-      const { data: newSession, error: createError } = await supabase
+    // 2. Try to create a new session
+    const { data: newSession, error: createError } = await supabase
       .from('sessions')
       .insert({
         post_id: post.id,
@@ -751,29 +749,45 @@ function ListenerView({ user, myProfile, todayListenerCount, seedPosts, onBack, 
       .select()
       .single();
 
+    // 3. Handle the 409 Conflict (Already exists)
     if (createError) {
+      if (createError.code === '23505' || createError.status === 409) {
+         const { data: retrySession } = await supabase
+          .from('sessions')
+          .select('*')
+          .eq('post_id', post.id)
+          .eq('listener_id', user.id)
+          .single();
+          
+         if (retrySession) {
+           setActiveSession({ ...retrySession, is_seed: true, post });
+           setShowEndTip(true);
+           return;
+         }
+      }
       console.error("Database error creating AI session:", createError);
       return; 
     }
 
-      if (newSession) {
+    if (newSession) {
       setActiveSession({ ...newSession, is_seed: true, post });
       setShowEndTip(true);
     }
     return;
   }
 
-    const { data: existing } = await supabase.from('sessions')
-      .select('*').eq('post_id', post.id).eq('listener_id', user.id).maybeSingle();
+  // HUMAN POST LOGIC
+  const { data: existing } = await supabase.from('sessions')
+    .select('*').eq('post_id', post.id).eq('listener_id', user.id).maybeSingle();
 
-    if (existing) {
-      setActiveSession({ ...existing, post })
-      return
-    }
-
-    setActiveSession({ id: null, post, isPending: true })
-    setShowEndTip(true)
+  if (existing) {
+    setActiveSession({ ...existing, post });
+    return;
   }
+
+  setActiveSession({ id: null, post, isPending: true });
+  setShowEndTip(true);
+}
 
   if (showBurnoutBlock) {
     return (
