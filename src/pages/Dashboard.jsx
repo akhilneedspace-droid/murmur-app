@@ -229,17 +229,22 @@ export default function Dashboard() {
         const msgs = JSON.parse(stored)
         if (!msgs || msgs.length === 0) continue // only opening msg, user never replied //chatgpt try
         const isEnded = localStorage.getItem(`seed_msgs_${user.id}_${post.id}_ended`) === 'true'
-        seedEntries.push({
-          id: `seed-${post.id}`,
-          is_seed: true,
-          is_ai: true,
-          status: isEnded ? 'closed' : 'active',
-          expresser_id: 'ai',
-          listener_id: user.id,
-          created_at: msgs[msgs.length - 1]?.created_at ?? new Date().toISOString(),
-          posts: { content: post.content, emotion_tag: post.emotion_tag, is_anonymous: false, user_id: 'ai', id: post.id },
-          otherProfile: { full_name: post.profiles?.full_name ?? 'AI', avatar_url: null }
-        })
+       seedEntries.push({
+  id: `seed-${post.id}`,
+  is_seed: true,
+  is_ai: true,
+  status: isEnded ? 'closed' : 'active',
+  expresser_id: 'ai',
+  listener_id: user.id,
+  created_at: msgs[msgs.length - 1]?.created_at ?? new Date().toISOString(),
+  // Ensure the post object is fully preserved
+  posts: post, 
+  // Map the profile correctly from the seed post
+  otherProfile: { 
+    full_name: post.profiles?.full_name ?? 'Someone', 
+    avatar_url: post.profiles?.avatar_url ?? null 
+  }
+})
       } catch {}
     }
     if (seedEntries.length > 0) {
@@ -1376,21 +1381,29 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
   function insertEmoji(e) { setInput(i => i + e); inputRef.current?.focus() }
 
 const otherName = (() => {
-  // 1. Try to find the seed data using the Post ID or the Session ID
-  const seed = SEED_POSTS.find(s => s.id === post?.id || s.id === sessionId || sessionId === `seed-${s.id}`);
+  // 1. Extract the numeric/raw ID if the sessionId starts with "seed-"
+  const rawIdFromSession = typeof sessionId === 'string' && sessionId.startsWith('seed-') 
+    ? sessionId.replace('seed-', '') 
+    : sessionId;
+
+  // 2. Search SEED_POSTS using the raw ID or the post object ID
+  const seed = SEED_POSTS.find(s => 
+    String(s.id) === String(post?.id) || 
+    String(s.id) === String(rawIdFromSession)
+  );
   
   if (isSeedSession && seed) {
     return seed.profiles?.full_name?.split(' ')[0] ?? 'Someone';
   }
   
-  // 2. Fallback to the profile loaded from Supabase (for real chats)
-  if (otherProfile?.full_name) {
-    return otherProfile.full_name.split(' ')[0];
+  // 3. If it's not a seed, use the preloaded profile name
+  if (preloadedOtherProfile?.full_name && preloadedOtherProfile.full_name !== 'AI') {
+     return preloadedOtherProfile.full_name.split(' ')[0];
   }
 
-  // 3. Last resort fallbacks
   if (post?.is_anonymous) return 'Anonymous';
-  return isExpresser ? 'Listener' : 'Someone';
+  
+  return otherProfile?.full_name?.split(' ')[0] ?? (isExpresser ? 'Listener' : 'Someone');
 })();
 
 const otherAvatar = (() => {
@@ -1404,6 +1417,14 @@ const otherAvatar = (() => {
 })();
   const myName = myProfile?.full_name?.split(' ')[0] ?? 'You'
   const myAvatar = myProfile?.avatar_url ?? null
+
+  // ADD THE LOG HERE:
+  console.log("ChatView Identity Check:", { 
+    sessionId, 
+    postId: post?.id, 
+    preloadedName: preloadedOtherProfile?.full_name,
+    isSeed: isSeedSession
+  });
 
   if (showRating) return <RatingScreen onSubmit={async (r) => { if (!isAIChat) await supabase.from('sessions').update({ rating: r }).eq('id', sessionId); onEnd?.() }} onSkip={() => onEnd?.()} />
   if (ended) {
