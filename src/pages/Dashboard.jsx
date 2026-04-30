@@ -714,6 +714,13 @@ function ListenerView({ user, myProfile, todayListenerCount, seedPosts, onBack, 
   }
 
   async function handleSelectPost(post) {
+
+    console.log("Post Clicked:", post.id, "Is Seed?", post.is_seed);
+
+  if (todayListenerCount >= DAILY_LISTEN_LIMIT) { 
+    setShowBurnoutBlock(true); 
+    return; 
+  }
     if (todayListenerCount >= DAILY_LISTEN_LIMIT) { 
       setShowBurnoutBlock(true); 
       return; 
@@ -877,7 +884,7 @@ function PostCard({ post, delay, onClick }) {
   return (
     <button 
       onClick={(e) => {
-        e.preventDefault(); // Safety to ensure the button click triggers
+        e.stopPropagation(); // Safety to ensure the button click triggers
         onClick();
       }} 
       onMouseEnter={() => setHovered(true)} 
