@@ -221,40 +221,50 @@ export default function Dashboard() {
 
   // Load seed chats from localStorage and add to pastChats
   function loadSeedChats() {
-    const seedEntries = []
-    for (const post of SEED_POSTS) {
-      const stored = localStorage.getItem(`seed_msgs_${user.id}_${post.id}`) //chatgpt try
-      if (!stored) continue
-      try {
-        const msgs = JSON.parse(stored)
-        if (!msgs || msgs.length === 0) continue // only opening msg, user never replied //chatgpt try
-        const isEnded = localStorage.getItem(`seed_msgs_${user.id}_${post.id}_ended`) === 'true'
-       seedEntries.push({
-  id: `seed-${post.id}`,
-  is_seed: true,
-  is_ai: true,
-  status: isEnded ? 'closed' : 'active',
-  expresser_id: 'ai',
-  listener_id: user.id,
-  created_at: msgs[msgs.length - 1]?.created_at ?? new Date().toISOString(),
-  // Ensure the post object is fully preserved
-  posts: post, 
-  // Map the profile correctly from the seed post
-  otherProfile: { 
-    full_name: post.profiles?.full_name ?? 'Someone', 
-    avatar_url: post.profiles?.avatar_url ?? null 
-  }
-})
-      } catch {}
-    }
-    if (seedEntries.length > 0) {
-      setPastChats(prev => {
-        const ids = new Set(prev.map(c => c.id))
-        const fresh = seedEntries.filter(e => !ids.has(e.id))
-        return [...prev, ...fresh]
+  const seedEntries = []
+  for (const post of SEED_POSTS) {
+    const stored = localStorage.getItem(`seed_msgs_${user.id}_${post.id}`)
+    if (!stored) continue
+
+    try {
+      const msgs = JSON.parse(stored)
+      // Only include if the user actually replied
+      if (!msgs || msgs.length === 0) continue 
+
+      const isEnded = localStorage.getItem(`seed_msgs_${user.id}_${post.id}_ended`) === 'true'
+      
+      seedEntries.push({
+        id: `seed-${post.id}`, // Keeping the prefix for local storage tracking
+        is_seed: true,
+        is_ai: true,
+        status: isEnded ? 'closed' : 'active',
+        expresser_id: 'ai',
+        listener_id: user.id,
+        created_at: msgs[msgs.length - 1]?.created_at ?? new Date().toISOString(),
+        // We nest 'post' inside 'posts' to match your database schema structure
+        posts: { 
+          ...post,
+          id: post.id 
+        }, 
+        // Explicitly pull the name from the seed profile to avoid the "AI" label
+        otherProfile: { 
+          full_name: post.profiles?.full_name ?? (post.is_anonymous ? 'Anonymous' : 'Someone'), 
+          avatar_url: post.profiles?.avatar_url ?? null 
+        }
       })
+    } catch (err) {
+      console.error("Error parsing seed chat:", err)
     }
   }
+
+  if (seedEntries.length > 0) {
+    setPastChats(prev => {
+      const ids = new Set(prev.map(c => c.id))
+      const fresh = seedEntries.filter(e => !ids.has(e.id))
+      return [...prev, ...fresh]
+    })
+  }
+}
 
   async function deleteChat(sessionId) {
     const { data: session } = await supabase.from('sessions').select('deleted_by').eq('id', sessionId).single()
@@ -1381,40 +1391,45 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
   function insertEmoji(e) { setInput(i => i + e); inputRef.current?.focus() }
 
 const otherName = (() => {
-  // 1. Extract the numeric/raw ID if the sessionId starts with "seed-"
-  const rawIdFromSession = typeof sessionId === 'string' && sessionId.startsWith('seed-') 
-    ? sessionId.replace('seed-', '') 
-    : sessionId;
-
-  // 2. Search SEED_POSTS using the raw ID or the post object ID
+  // 1. Prioritize finding the person in SEED_POSTS by comparing the IDs
+  // We use String() to ensure the long UUIDs match correctly
   const seed = SEED_POSTS.find(s => 
     String(s.id) === String(post?.id) || 
-    String(s.id) === String(rawIdFromSession)
+    String(s.id) === String(sessionId) ||
+    (typeof sessionId === 'string' && sessionId.includes(String(s.id)))
   );
   
-  if (isSeedSession && seed) {
+  // 2. If it's a seed (even if isSeedSession prop is false), use the Seed Name
+  if (seed) {
     return seed.profiles?.full_name?.split(' ')[0] ?? 'Someone';
   }
   
-  // 3. If it's not a seed, use the preloaded profile name
-  if (preloadedOtherProfile?.full_name && preloadedOtherProfile.full_name !== 'AI') {
-     return preloadedOtherProfile.full_name.split(' ')[0];
-  }
-
+  // 3. If it's NOT a seed, check if it's anonymous
   if (post?.is_anonymous) return 'Anonymous';
   
+  // 4. Fallback: Use preloaded name ONLY if it isn't the generic "AI" strings
+  if (preloadedOtherProfile?.full_name && 
+      !preloadedOtherProfile.full_name.includes('AI') && 
+      preloadedOtherProfile.full_name !== 'Someone') {
+    return preloadedOtherProfile.full_name.split(' ')[0];
+  }
+
+  // 5. Final safety fallback
   return otherProfile?.full_name?.split(' ')[0] ?? (isExpresser ? 'Listener' : 'Someone');
 })();
 
 const otherAvatar = (() => {
-  const seed = SEED_POSTS.find(s => s.id === post?.id || s.id === sessionId || sessionId === `seed-${s.id}`);
+  const seed = SEED_POSTS.find(s => 
+    String(s.id) === String(post?.id) || 
+    String(s.id) === String(sessionId)
+  );
   
-  if (isSeedSession && seed) {
-    return seed.profiles?.avatar_url ?? null;
-  }
+  if (seed) return seed.profiles?.avatar_url ?? null;
+  if (post?.is_anonymous) return null;
   
-  return otherProfile?.avatar_url ?? null;
+  return otherProfile?.avatar_url ?? preloadedOtherProfile?.avatar_url ?? null;
 })();
+
   const myName = myProfile?.full_name?.split(' ')[0] ?? 'You'
   const myAvatar = myProfile?.avatar_url ?? null
 
