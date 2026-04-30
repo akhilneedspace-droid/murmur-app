@@ -622,6 +622,7 @@ function ExpresserView({ user, myProfile, onBack, onBrowseListeners, onSessionSt
 }
 
 // ── Listener View ──────────────────────────────────────────────
+// ── Listener View ──────────────────────────────────────────────
 function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete }) {
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -630,6 +631,9 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   const [showEndTip, setShowEndTip] = useState(false)
   const [showBurnoutNudge, setShowBurnoutNudge] = useState(false)
   const [showBurnoutBlock, setShowBurnoutBlock] = useState(false)
+  
+  // ADD THIS LINE: This creates the missing variable
+  const [myActiveSessions, setMyActiveSessions] = useState([])
 
   const DAILY_LISTEN_NUDGE  = 3
   const DAILY_LISTEN_LIMIT  = 10
@@ -639,148 +643,75 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   useEffect(() => {
     if (todayListenerCount >= DAILY_LISTEN_LIMIT) { setShowBurnoutBlock(true); return }
     if (todayListenerCount >= DAILY_LISTEN_NUDGE) setShowBurnoutNudge(true)
-    fetchPosts()
-    const ch = supabase.channel('open-posts').on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, fetchPosts).subscribe()
+    
+    // Call the load function
+    loadListenerData()
+    
+    const ch = supabase.channel('open-posts').on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, loadListenerData).subscribe()
     return () => supabase.removeChannel(ch)
   }, [todayListenerCount])
 
-  async function fetchPosts() {
-    const { data } = await supabase.from('posts').select('*, profiles(full_name, avatar_url)').eq('status', 'open').neq('user_id', user.id).order('created_at', { ascending: false })
-    setPosts([...(data || []), ...SEED_POSTS]); setLoading(false)
-  }
-
-  async function handleSelectPost(post) {
-    if (todayListenerCount >= DAILY_LISTEN_LIMIT) { setShowBurnoutBlock(true); return }
+  // ADD THIS FUNCTION: It fetches both posts AND your current sessions
+  async function loadListenerData() {
+    setLoading(true)
     
-    if (post.is_seed) {
-      // 1. Create a real session in Supabase
-      const { data: newSession, error } = await supabase
-        .from('sessions')
-        .insert({
-          post_id: post.id, // Ensure this is a UUID like '00000000-0000-0000-0000-000000000007'
-          expresser_id: '00000000-0000-0000-0000-000000000001', 
-          listener_id: user.id,
-          status: 'active'
-        })
-        .select()
-        .single()
+    // 1. Fetch active sessions so we know what to hide
+    const { data: sessions } = await supabase
+      .from('sessions')
+      .select('post_id')
+      .eq('listener_id', user.id)
+      .eq('status', 'active')
+    
+    setMyActiveSessions(sessions || [])
 
-      if (error) {
-        // This will pop up an error message on your screen if the DB rejects it
-        console.error("Supabase Error:", error.message);
-        alert("Database Error: " + error.message + " - Check your Browser Console.");
-        
-        // Fallback to old behavior so the UI doesn't crash
-        setActiveSession({ id: `{post.id}`, is_seed: true, post })
-      } else {
-        console.log("Session successfully created:", newSession.id);
-        // Use the new REAL DB id
-        setActiveSession({ id: newSession.id, is_seed: true, post })
-      }
-      
-      setShowEndTip(true)
-      return
-    }
-
-    // Existing logic for human posts...
-    const { data: existing } = await supabase.from('sessions')
-      .select('*').eq('post_id', post.id).eq('listener_id', user.id).single()
-
-    if (existing) {
-      setActiveSession({ ...existing, post })
-      return
-    }
-
-    setActiveSession({ id: null, post, isPending: true })
-    setShowEndTip(true)
+    // 2. Fetch the posts
+    const { data: postsData } = await supabase
+      .from('posts')
+      .select('*, profiles(full_name, avatar_url)')
+      .eq('status', 'open')
+      .neq('user_id', user.id)
+      .order('created_at', { ascending: false })
+    
+    setPosts([...(postsData || []), ...SEED_POSTS])
+    setLoading(false)
   }
 
-  if (showBurnoutBlock) {
-    return (
-      <div className="page" style={{ padding: '0 28px', justifyContent: 'center', alignItems: 'center', gap: 20, textAlign: 'center' }}>
-        <div style={{ fontSize: 48 }}>🌿</div>
-        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 400, color: 'var(--teal)' }}>You've given a lot today.</h2>
-        <p style={{ fontSize: 15, color: 'rgba(240,239,232,0.7)', lineHeight: 1.8, maxWidth: 300 }}>
-          You've listened to {DAILY_LISTEN_LIMIT} people today — that's genuinely remarkable. Rest now. Your presence matters more when you're recharged. Come back tomorrow.
-        </p>
-        <button className="btn-ghost" style={{ maxWidth: 280 }} onClick={() => onBack(null)}>Back to home</button>
-      </div>
-    )
-  }
+  // ... (Keep your handleSelectPost and burnout logic exactly the same) ...
 
-  if (activeSession) {
-    return <ChatView
-      sessionId={activeSession.id}
-      isExpresser={false}
-      isSeedSession={activeSession.is_seed}
-      post={activeSession.post}
-      myProfile={myProfile}
-      currentUserId={user.id}
-      showEndTip={showEndTip}
-      onEndTipDismiss={() => setShowEndTip(false)}
-      onBack={(didInteract) => {
-        // Only show resume modal for real (non-seed) sessions
-        if (activeSession.is_seed) { onBack(null, false); return }
-        onBack(activeSession, didInteract)
-      }}
-      onEnd={() => { setActiveSession(null); onComplete?.(); fetchPosts() }}
-    />
-  }
-
+  // UPDATE THE RETURN STATEMENT: Use myActiveSessions instead of allListenerSessions
   return (
     <div className="page" style={{ padding: '0 24px', justifyContent: 'flex-start' }}>
-      <div className="orb" style={{ width: 300, height: 300, background: 'radial-gradient(circle, rgba(93,202,165,0.08) 0%, transparent 70%)', top: '-40px', right: '-60px' }} />
-
-      {/* Burnout nudge after 3 sessions */}
-      {showBurnoutNudge && (
-        <Modal
-          title="You've been showing up a lot today 💙"
-          body={`You've listened to ${todayListenerCount} people today. How are you doing? It's okay to rest — you can come back to this tomorrow.`}
-          primaryLabel="I'm okay, keep going"
-          primaryAction={() => setShowBurnoutNudge(false)}
-          secondaryLabel="I'll rest for now"
-          secondaryAction={() => onBack(null)}
-        />
-      )}
-
-      <div style={{ position: 'relative', zIndex: 1, paddingTop: 52, marginBottom: 24 }}>
-        <button onClick={() => onBack(null)} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'rgba(240,239,232,0.5)', fontSize: 14, marginBottom: 20, background: 'none', border: 'none', cursor: 'pointer' }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-          Back
-        </button>
-        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 400, letterSpacing: '-0.01em', marginBottom: 6, color: 'var(--text)' }}>Someone needs a listener.</h2>
-        <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.5)' }}>Choose one person to be present with. · {DAILY_LISTEN_LIMIT - todayListenerCount} sessions remaining today</p>
+      {/* ... (Keep your header and orb code the same) ... */}
+      
+      <div style={{ 
+        position: 'relative', 
+        zIndex: 1, 
+        display: 'flex', 
+        flexDirection: 'column', 
+        gap: 12, 
+        paddingBottom: 48, 
+        opacity: visible ? 1 : 0, 
+        transform: visible ? 'translateY(0)' : 'translateY(12px)', 
+        transition: 'opacity 0.4s ease, transform 0.4s ease' 
+      }}>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: 40 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--teal)', display: 'inline-block', animation: 'pulse 1.2s infinite' }} />
+          </div>
+        ) : (
+          posts
+            // We use our new state 'myActiveSessions' to hide the posts
+            .filter(post => !myActiveSessions.some(session => session.post_id === post.id))
+            .map((post, idx) => (
+              <PostCard 
+                key={post.id} 
+                post={post} 
+                delay={idx * 0.06} 
+                onClick={() => handleSelectPost(post)} 
+              />
+            ))
+        )}
       </div>
-
-  <div style={{ 
-  position: 'relative', 
-  zIndex: 1, 
-  display: 'flex', 
-  flexDirection: 'column', 
-  gap: 12, 
-  paddingBottom: 48, 
-  opacity: visible ? 1 : 0, 
-  transform: visible ? 'translateY(0)' : 'translateY(12px)', 
-  transition: 'opacity 0.4s ease, transform 0.4s ease' 
-}}>
-  {loading ? (
-    <div style={{ textAlign: 'center', padding: 40 }}>
-      <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--teal)', display: 'inline-block', animation: 'pulse 1.2s infinite' }} />
-    </div>
-  ) : (
-    posts
-      // We use (allListenerSessions || []) as a safety net to prevent blank screens
-      .filter(post => !(allListenerSessions || []).some(session => session.post_id === post.id))
-      .map((post, idx) => (
-        <PostCard 
-          key={post.id} 
-          post={post} 
-          delay={idx * 0.06} 
-          onClick={() => handleSelectPost(post)} 
-        />
-      ))
-  )}
-</div>
     </div>
   )
 }
