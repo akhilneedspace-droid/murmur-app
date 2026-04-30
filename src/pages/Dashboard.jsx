@@ -1376,28 +1376,29 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
   function insertEmoji(e) { setInput(i => i + e); inputRef.current?.focus() }
 
 const otherName = (() => {
-  // 1. Check if the current post matches a seed
-  // 2. ALSO check if the sessionId matches a seed (crucial for history view)
-  const seed = SEED_POSTS.find(s => s.id === post?.id || s.id === sessionId);
+  // 1. Try to find the seed data using the Post ID or the Session ID
+  const seed = SEED_POSTS.find(s => s.id === post?.id || s.id === sessionId || sessionId === `seed-${s.id}`);
   
   if (isSeedSession && seed) {
     return seed.profiles?.full_name?.split(' ')[0] ?? 'Someone';
   }
   
+  // 2. Fallback to the profile loaded from Supabase (for real chats)
+  if (otherProfile?.full_name) {
+    return otherProfile.full_name.split(' ')[0];
+  }
+
+  // 3. Last resort fallbacks
   if (post?.is_anonymous) return 'Anonymous';
-  
-  // Default fallback for real users
-  return otherProfile?.full_name?.split(' ')[0] ?? (isExpresser ? 'Listener' : 'Someone');
+  return isExpresser ? 'Listener' : 'Someone';
 })();
 
 const otherAvatar = (() => {
-  const seed = SEED_POSTS.find(s => s.id === post?.id || s.id === sessionId);
+  const seed = SEED_POSTS.find(s => s.id === post?.id || s.id === sessionId || sessionId === `seed-${s.id}`);
   
   if (isSeedSession && seed) {
     return seed.profiles?.avatar_url ?? null;
   }
-  
-  if (post?.is_anonymous) return null;
   
   return otherProfile?.avatar_url ?? null;
 })();
