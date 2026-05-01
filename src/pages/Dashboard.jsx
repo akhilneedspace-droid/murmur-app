@@ -920,53 +920,53 @@ function PostCard({ post, delay, onClick }) {
   );
 }
 
-function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
-  const [confirmDelete, setConfirmDelete] = useState(null)
+function PastChatsView({ chats, userId, onOpen, onDelete, onBack, SEED_POSTS = [] }) {
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   // Date bucket label logic
   function dateBucket(isoStr) {
-    const d = new Date(isoStr)
-    const now = new Date()
-    const diffDays = Math.floor((now - d) / 86400000)
-    if (diffDays === 0) return 'Today'
-    if (diffDays === 1) return 'Yesterday'
-    if (diffDays < 7)  return 'This week'
-    if (diffDays < 30) return 'This month'
-    return 'Earlier'
+    const d = new Date(isoStr);
+    const now = new Date();
+    const diffDays = Math.floor((now - d) / 86400000);
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return 'This week';
+    if (diffDays < 30) return 'This month';
+    return 'Earlier';
   }
 
-  const BUCKET_ORDER = ['Today', 'Yesterday', 'This week', 'This month', 'Earlier']
+  const BUCKET_ORDER = ['Today', 'Yesterday', 'This week', 'This month', 'Earlier'];
 
-  // Separate roles
-  const myExpressions = chats.filter(c => c.expresser_id === userId)
-  const myListening   = chats.filter(c => c.listener_id === userId)
+  // 1. Separate roles
+  const myExpressions = chats.filter(c => c.expresser_id === userId);
+  const myListening = chats.filter(c => c.listener_id === userId);
 
-  // Group expressions by post for the multi-listener logic
+  // 2. Group expressions by post (Standard functionality)
   const expressionGroups = Object.values(
     myExpressions.reduce((acc, chat) => {
-      const key = chat.posts?.id ?? chat.id
-      if (!acc[key]) acc[key] = { post: chat.posts, sessions: [], date: chat.created_at, id: key }
-      acc[key].sessions.push(chat)
-      if (new Date(chat.created_at) > new Date(acc[key].date)) acc[key].date = chat.created_at
-      return acc
+      const key = chat.posts?.id ?? chat.id;
+      if (!acc[key]) acc[key] = { post: chat.posts, sessions: [], date: chat.created_at, id: key };
+      acc[key].sessions.push(chat);
+      if (new Date(chat.created_at) > new Date(acc[key].date)) acc[key].date = chat.created_at;
+      return acc;
     }, {})
-  )
+  );
 
-  // Build unified rows
+  // 3. Build unified rows for sorting
   const rows = [
     ...expressionGroups.map(g => ({ type: 'expression', date: g.date, data: g })),
     ...myListening.map(c => ({ type: 'listening', date: c.created_at, data: c })),
-  ].sort((a, b) => new Date(b.date) - new Date(a.date))
+  ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  // Group by date bucket
+  // 4. Group by date bucket
   const buckets = rows.reduce((acc, row) => {
-    const b = dateBucket(row.date)
-    if (!acc[b]) acc[b] = []
-    acc[b].push(row)
-    return acc
-  }, {})
+    const b = dateBucket(row.date);
+    if (!acc[b]) acc[b] = [];
+    acc[b].push(row);
+    return acc;
+  }, {});
 
-  // Unified Label Helper
+  // Shared Status Component
   const StatusLabel = ({ status }) => {
     const isOngoing = status === 'active';
     return (
@@ -988,7 +988,7 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
           Back
         </button>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 400, letterSpacing: '-0.01em', marginBottom: 6, color: 'var(--text)' }}>Your conversations</h2>
-        <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.5)' }}>{rows.length} total</p>
+        <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.5)' }}>{rows.length} total · grouped by date</p>
       </div>
 
       {rows.length === 0 ? (
@@ -1004,9 +1004,8 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {buckets[bucket].map(row => {
                   if (row.type === 'expression') {
-                    const { post, sessions, id } = row.data
-                    const preview = post?.content?.slice(0, 100) ?? ''
-                    
+                    const { post, sessions, id } = row.data;
+                    const preview = post?.content?.slice(0, 80) ?? 'No content';
                     return (
                       <div key={`exp-${id}`} style={{ padding: '14px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -1014,32 +1013,32 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
                           {post?.emotion_tag && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: 'var(--bg3)', color: 'rgba(240,239,232,0.5)' }}>{post.emotion_tag}</span>}
                         </div>
                         <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.75)', lineHeight: 1.6, marginBottom: 10 }}>"{preview}..."</p>
-                        
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                           {sessions.map((session, idx) => {
-                            const oName = session.otherProfile?.full_name?.split(' ')[0] ?? `Listener ${idx + 1}`
+                            const name = session.otherProfile?.full_name?.split(' ')[0] ?? `Listener ${idx + 1}`;
                             return (
                               <div key={session.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'var(--bg3)', borderRadius: 8 }}>
-                                <Avatar url={session.otherProfile?.avatar_url} name={oName} size={20} />
-                                <span style={{ fontSize: 13, color: 'rgba(240,239,232,0.7)', flex: 1 }}>{oName}</span>
+                                <Avatar url={session.otherProfile?.avatar_url} name={name} size={20} />
+                                <span style={{ fontSize: 13, color: 'rgba(240,239,232,0.7)', flex: 1 }}>{name}</span>
                                 <StatusLabel status={session.status} />
                                 <button onClick={() => onOpen(session)} style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Open</button>
-                                <button onClick={() => setConfirmDelete(session.id)} style={{ color: 'rgba(240,239,232,0.25)', fontSize: 14, background: 'none', border: 'none' }}>×</button>
+                                <button onClick={() => setConfirmDelete(session.id)} style={{ color: 'rgba(240,239,232,0.25)', fontSize: 14, background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
                               </div>
                             )
                           })}
                         </div>
                       </div>
-                    )
+                    );
                   }
 
-                  // Listening card
-                  const chat = row.data
-                  const preview = chat.posts?.content?.slice(0, 100) ?? ''
-                  // Support for Seed Posts / AI chats
-                  const seedData = typeof SEED_POSTS !== 'undefined' ? SEED_POSTS.find(s => s.id === chat.post_id) : null;
-                  const otherName = seedData ? (seedData.profiles?.full_name?.split(' ')[0] ?? 'Someone') : (chat.otherProfile?.full_name?.split(' ')[0] ?? 'Someone');
-                  const otherAvatar = seedData ? seedData.profiles?.avatar_url : chat.otherProfile?.avatar_url;
+                  // Listening Card (Handles normal and Seed Posts)
+                  const chat = row.data;
+                  const isSeed = !chat.posts && chat.post_id?.startsWith('seed-'); // Common pattern for seeds
+                  const seedInfo = isSeed ? SEED_POSTS.find(s => s.id === chat.post_id) : null;
+                  
+                  const otherName = seedInfo ? 'Seed Post' : (chat.otherProfile?.full_name?.split(' ')[0] ?? 'Someone');
+                  const otherAvatar = seedInfo ? null : chat.otherProfile?.avatar_url;
+                  const preview = chat.posts?.content?.slice(0, 80) ?? seedInfo?.content?.slice(0, 80) ?? 'View conversation';
 
                   return (
                     <div key={`listen-${chat.id}`} style={{ padding: '14px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
@@ -1054,9 +1053,9 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
                         </div>
                         <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.7)', lineHeight: 1.6 }}>"{preview}..."</p>
                       </button>
-                      <button onClick={() => setConfirmDelete(chat.id)} style={{ color: 'rgba(240,239,232,0.25)', fontSize: 20, padding: 4, background: 'none', border: 'none' }}>×</button>
+                      <button onClick={() => setConfirmDelete(chat.id)} style={{ color: 'rgba(240,239,232,0.25)', fontSize: 20, padding: 4, background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
                     </div>
-                  )
+                  );
                 })}
               </div>
             </div>
@@ -1065,7 +1064,7 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
       )}
       {confirmDelete && <Modal title="Delete conversation?" body="This can't be undone." primaryLabel="Delete" primaryAction={() => { onDelete(confirmDelete); setConfirmDelete(null) }} secondaryLabel="Keep" secondaryAction={() => setConfirmDelete(null)} danger />}
     </div>
-  )
+  );
 }
 
 function EmojiPicker({ onSelect, onClose }) {
