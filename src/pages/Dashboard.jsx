@@ -1123,6 +1123,7 @@ function EmojiPicker({ onSelect, onClose }) {
 
 // ── Chat View ──────────────────────────────────────────────────
 // ── Chat View ──────────────────────────────────────────────────
+// ── Chat View ──────────────────────────────────────────────────
 function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isAISession, post, myProfile, currentUserId, preloadedOtherProfile, allListenerSessions, newListenerNotif, onNewListenerDismiss, onSwitchListener, showEndTip, onEndTipDismiss, onBack, onEnd }) {
   const [sessionId, setSessionId] = useState(initialSessionId)
   const [messages, setMessages] = useState([])
@@ -1146,149 +1147,179 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
   const isAIChat = isSeedSession || isAISession
   const TYPING_REVEAL_MS = 3000
 
-  // 1. HELPER TO TRIGGER AI
+  // Helper to trigger AI
   async function triggerAIResponse(currentMessages) {
     if (!isAIChat || aiThinking) return;
-    
     setAiThinking(true);
     const history = currentMessages.map(m => ({
       role: m.sender_id === currentUserId ? 'user' : 'assistant',
       content: m.content
     }));
-    
     const aiRole = isExpresser ? 'listener' : 'expresser';
-    console.log("DEBUG: Triggering AI Response", { aiRole, historyLength: history.length });
-
     const aiText = await getAIResponse(history, aiRole, post?.content);
     setAiThinking(false);
 
     if (aiText) {
       setOtherTyping(true);
-      await new Promise(r => setTimeout(r, 1500));
+      await new Promise(r => setTimeout(r, 1800));
       setOtherTyping(false);
 
-      const aiMsg = { 
-        id: `ai-${Date.now()}`, 
-        session_id: sessionId,
-        sender_id: '00000000-0000-0000-0000-000000000001', 
-        content: aiText, 
-        is_ai_msg: true,
-        created_at: new Date().toISOString()
-      };
-      
-      setMessages(prev => [...prev, aiMsg]);
-      // Optional: Save to Supabase if session exists
-      if (sessionId && !String(sessionId).startsWith('seed-')) {
-        await supabase.from('messages').insert({ 
+      const { data: aiInserted } = await supabase.from('messages')
+        .insert({ 
           session_id: sessionId, 
           sender_id: '00000000-0000-0000-0000-000000000001', 
           content: aiText, 
           is_ai_msg: true 
-        });
+        }).select().single();
+
+      if (aiInserted) {
+        seenIds.current.add(aiInserted.id);
+        setMessages(prev => [...prev, aiInserted]);
       }
     }
   }
 
   useEffect(() => { setSessionId(initialSessionId) }, [initialSessionId])
 
-  // 2. LOAD MESSAGES & AUTO-TRIGGER FOR AI
+  // Correct Naming Logic
   useEffect(() => {
-    seenIds.current = new Set()
-    
-    async function loadChat() {
-      setLoading(true);
-      let msgs = [];
-      
-      if (sessionId && !String(sessionId).startsWith('seed-')) {
-        const { data } = await supabase.from('messages').select('*').eq('session_id', sessionId).order('created_at', { ascending: true });
-        msgs = data || [];
-      } else {
-        // Initial state for new seed/AI session
-        msgs = [{ 
-          id: 'init', 
-          sender_id: isExpresser ? currentUserId : 'other', 
-          content: post?.content ?? '', 
-          created_at: new Date().toISOString() 
-        }];
-      }
-
-      setMessages(msgs);
-      setLoading(false);
-
-      // FIX: If I am the listener and the only message is the AI's post, 
-      // OR if I am expresser and just started, trigger AI to talk.
-      if (isAIChat && msgs.length === 1) {
-        console.log("DEBUG: Auto-triggering AI for first message");
-        triggerAIResponse(msgs);
+    if (preloadedOtherProfile) { setOtherProfile(preloadedOtherProfile); return }
+    if (isAIChat) return
+    async function load() {
+      if (!isExpresser && post?.user_id) {
+        const { data } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', post.user_id).single()
+        if (data) setOtherProfile(data)
+      } else if (isExpresser && sessionId) {
+        const { data: s } = await supabase.from('sessions').select('listener_id').eq('id', sessionId).single()
+        if (s?.listener_id) { 
+            const { data } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', s.listener_id).single(); 
+            if (data) setOtherProfile(data) 
+        }
       }
     }
+    load()
+  }, [post, isExpresser, isAIChat, sessionId])
 
-    loadChat();
-  }, [sessionId]);
+  // Load Messages
+  useEffect(() => {
+    seenIds.current = new Set()
+    async function loadMessages() {
+      setLoading(true)
+      if (sessionId) {
+        const { data: s } = await supabase.from('sessions').select('status').eq('id', sessionId).single()
+        if (s?.status === 'closed') setSessionClosed(true)
+
+        const { data } = await supabase.from('messages').select('*').eq('session_id', sessionId).order('created_at', { ascending: true })
+        const msgs = data || []
+        msgs.forEach(m => seenIds.current.add(m.id))
+        setMessages(msgs)
+        setHasInteracted(msgs.some(m => m.sender_id === currentUserId))
+      } else {
+        // Initial state for new chat
+        const openingMsg = { id: 'init', sender_id: 'other', content: post?.content ?? '', created_at: new Date().toISOString() }
+        setMessages([openingMsg])
+      }
+      setLoading(false)
+      
+      // Auto-reply for AI first message
+      if (isAIChat && messages.length === 0) {
+          triggerAIResponse([{ sender_id: 'other', content: post?.content }]);
+      }
+    }
+    loadMessages()
+  }, [sessionId])
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, otherTyping, aiThinking])
 
   async function send() {
-    if (!input.trim() || aiThinking) return;
-    const content = input.trim(); 
-    setInput(''); 
+    if (!input.trim() || aiThinking) return
+    const content = input.trim(); setInput(''); setHasInteracted(true)
     
-    const myMsg = { 
-      id: `temp-${Date.now()}`, 
-      sender_id: currentUserId, 
-      content, 
-      created_at: new Date().toISOString() 
-    };
-    
-    const updated = [...messages, myMsg];
-    setMessages(updated);
-    setHasInteracted(true);
+    let activeSessionId = sessionId
 
-    // AI Logic
-    if (isAIChat) {
-      triggerAIResponse(updated);
-    } else {
-      // Human Logic: Insert to DB
-      if (sessionId) {
-        await supabase.from('messages').insert({ session_id: sessionId, sender_id: currentUserId, content });
+    // 1. If no session yet (first time listener replies to story), create it
+    if (!activeSessionId && post) {
+      const { data: newSession } = await supabase.from('sessions')
+        .insert({ 
+          post_id: post.id, 
+          expresser_id: isSeedSession ? '00000000-0000-0000-0000-000000000001' : post.user_id, 
+          listener_id: currentUserId, 
+          status: 'active' 
+        }).select().single()
+      if (newSession) {
+        activeSessionId = newSession.id
+        setSessionId(activeSessionId)
       }
+    }
+
+    // 2. Insert message to Supabase (FIX: This ensures expresser messages are saved)
+    const { data: inserted } = await supabase.from('messages')
+      .insert({ session_id: activeSessionId, sender_id: currentUserId, content })
+      .select().single()
+
+    if (inserted) {
+      seenIds.current.add(inserted.id)
+      const updatedMsgs = [...messages, inserted]
+      setMessages(updatedMsgs)
+      
+      // 3. Trigger AI if applicable
+      if (isAIChat) triggerAIResponse(updatedMsgs)
     }
   }
 
-  const otherName = isExpresser ? 'Listener' : (post?.is_anonymous ? 'Anonymous' : (otherProfile?.full_name?.split(' ')[0] ?? 'Someone'));
-  const otherAvatar = post?.is_anonymous ? null : (otherProfile?.avatar_url ?? null);
+  const otherName = (() => {
+    // Check seed posts first
+    const seed = SEED_POSTS.find(s => String(s.id) === String(post?.id));
+    if (seed) return seed.profiles?.full_name?.split(' ')[0] ?? 'Someone';
+    if (post?.is_anonymous && !isExpresser) return 'Anonymous';
+    return otherProfile?.full_name?.split(' ')[0] ?? (isExpresser ? 'Listener' : 'Someone');
+  })();
 
-  if (showRating) return <RatingScreen onSubmit={() => onEnd?.()} onSkip={() => onEnd?.()} />
+  const otherAvatar = post?.is_anonymous ? null : (otherProfile?.avatar_url ?? null);
 
   return (
     <div className="page" style={{ justifyContent: 'flex-start', height: '100dvh' }}>
-      {/* Header */}
+      {/* Header - Restored logic with emotion tag and functional End button */}
       <div style={{ padding: '52px 24px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-        <button onClick={() => onBack?.()} style={{ background: 'none', border: 'none', color: 'rgba(240,239,232,0.5)', cursor: 'pointer' }}>
+        <button onClick={() => onBack?.(hasInteracted)} style={{ color: 'rgba(240,239,232,0.5)', background: 'none', border: 'none', cursor: 'pointer' }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
         </button>
         <Avatar url={otherAvatar} name={otherName} size={38} />
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ fontSize: 15, fontWeight: 500 }}>{otherName}</p>
-          <p style={{ fontSize: 12, color: 'var(--teal)' }}>● {isExpresser ? 'listener is here' : 'you are listening'}</p>
+          <p style={{ fontSize: 12, color: 'var(--teal)' }}>● {isExpresser ? 'your listener is here' : 'you are listening'}</p>
         </div>
-        <button onClick={() => setShowEndConfirm(true)} style={{ background: '#E24B4A', color: 'white', border: 'none', padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600 }}>End</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {post?.emotion_tag && <span style={{ fontSize: 11, padding: '4px 10px', borderRadius: 10, background: 'var(--bg3)', color: 'var(--teal)', border: '1px solid rgba(93,202,165,0.2)' }}>{post.emotion_tag}</span>}
+          {!sessionClosed && (
+            <button 
+              onClick={() => setShowEndConfirm(true)} 
+              style={{ fontSize: 12, fontWeight: 600, color: '#fff', padding: '6px 14px', border: 'none', borderRadius: 8, cursor: 'pointer', background: '#E24B4A' }}
+            >
+              End
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Messages Area */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* Restored Listener Tip */}
+        {!isExpresser && (
+          <div style={{ textAlign: 'center', padding: '10px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 8 }}>
+            <p style={{ fontSize: 12, color: 'rgba(240,239,232,0.6)', lineHeight: 1.6 }}>Be present, not a problem-solver. Let them feel heard first. 💙</p>
+          </div>
+        )}
+
         {messages.map((msg, i) => {
-          const isMine = msg.sender_id === currentUserId;
+          if (msg.content?.startsWith('__system__:')) return <div key={i} className="system-msg">{msg.content.replace('__system__:', '')}</div>
+          const isMine = msg.sender_id === currentUserId
           return (
             <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: isMine ? 'flex-end' : 'flex-start', gap: 4 }}>
+              {!isMine && <span style={{ fontSize: 11, color: 'rgba(240,239,232,0.5)', marginLeft: 4 }}>{otherName}</span>}
               <div style={{ 
-                maxWidth: '85%', 
-                padding: '12px 16px', 
-                borderRadius: isMine ? '18px 18px 4px 18px' : '18px 18px 18px 4px', 
-                background: isMine ? 'var(--accent)' : 'var(--bg2)',
-                border: isMine ? 'none' : '1px solid var(--border)',
-                fontSize: 15,
-                lineHeight: 1.5
+                maxWidth: '80%', padding: '12px 16px', fontSize: 15, borderRadius: isMine ? '18px 18px 4px 18px' : '18px 18px 18px 4px', 
+                background: isMine ? 'var(--accent)' : 'var(--bg2)', border: isMine ? 'none' : '1px solid var(--border)' 
               }}>
                 {msg.content}
               </div>
@@ -1299,71 +1330,41 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
         <div ref={bottomRef} />
       </div>
 
-      {/* FIXED BOTTOM INPUT BAR */}
-      <div style={{ 
-        padding: '16px 20px 40px', 
-        borderTop: '1px solid var(--border)', 
-        display: 'flex', 
-        alignItems: 'center', 
-        gap: 12,
-        background: 'var(--bg)' 
-      }}>
-        <button onClick={() => setShowEmoji(!showEmoji)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', padding: 0 }}>😊</button>
-        <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center' }}>
+      {/* Footer / Input - UI Fixed to match "send button.png" */}
+      <div style={{ padding: '12px 16px 40px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center' }}>
+        <button onClick={() => setShowEmoji(!showEmoji)} style={{ background: 'none', border: 'none', fontSize: 20 }}>🙂</button>
+        <div style={{ flex: 1, position: 'relative' }}>
           <textarea
             ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }}}
-            placeholder={isExpresser ? "Say what's on your mind..." : "Listen and respond..."}
-            style={{
-              width: '100%',
-              background: 'var(--bg2)',
-              border: '1px solid var(--border)',
-              borderRadius: '24px',
-              padding: '12px 48px 12px 16px',
-              color: 'white',
-              fontSize: 15,
-              resize: 'none',
-              outline: 'none',
-              minHeight: '46px',
-              maxHeight: '120px'
-            }}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+            placeholder={isExpresser ? "Say what's on your mind..." : "Respond with kindness..."}
+            className="chat-input-new" // Ensure this class exists in your CSS or use style
+            style={{ width: '100%', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 24, padding: '10px 45px 10px 16px', color: '#fff', resize: 'none', outline: 'none' }}
             rows={1}
           />
           <button 
-            onClick={send}
-            disabled={!input.trim() || aiThinking}
-            style={{
-              position: 'absolute',
-              right: '8px',
-              width: '32px',
-              height: '32px',
-              borderRadius: '50%',
-              background: input.trim() ? 'var(--teal)' : 'rgba(255,255,255,0.1)',
-              border: 'none',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
+            onClick={send} 
+            disabled={!input.trim()} 
+            style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer' }}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13"></line>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-            </svg>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={input.trim() ? "var(--teal)" : "gray"} strokeWidth="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
           </button>
         </div>
       </div>
 
-      {showEmoji && (
-        <div style={{ position: 'absolute', bottom: 100, left: 20, zIndex: 10 }}>
-          <EmojiPicker onSelect={(emoji) => { setInput(prev => prev + emoji); setShowEmoji(false); }} />
-        </div>
-      )}
+      {/* Modals for End Confirm */}
+      {showEndConfirm && <Modal 
+        title="End conversation?" 
+        body="This will close the chat for both of you." 
+        primaryLabel="End Chat" 
+        primaryAction={() => { setShowEndConfirm(false); setSessionClosed(true); onEnd?.() }}
+        secondaryLabel="Cancel"
+        secondaryAction={() => setShowEndConfirm(false)}
+      />}
     </div>
-  );
+  )
 }
 
 // Floating chat FAB rendered via portal
