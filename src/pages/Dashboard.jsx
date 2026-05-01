@@ -1122,6 +1122,7 @@ function EmojiPicker({ onSelect, onClose }) {
 }
 
 // ── Chat View ──────────────────────────────────────────────────
+// ── Chat View ──────────────────────────────────────────────────
 function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isAISession, post, myProfile, currentUserId, preloadedOtherProfile, allListenerSessions, newListenerNotif, onNewListenerDismiss, onSwitchListener, showEndTip, onEndTipDismiss, onBack, onEnd }) {
   const [sessionId, setSessionId] = useState(initialSessionId)
   const [messages, setMessages] = useState([])
@@ -1145,325 +1146,224 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
   const isAIChat = isSeedSession || isAISession
   const TYPING_REVEAL_MS = 3000
 
-  useEffect(() => { setSessionId(initialSessionId) }, [initialSessionId])
+  // 1. HELPER TO TRIGGER AI
+  async function triggerAIResponse(currentMessages) {
+    if (!isAIChat || aiThinking) return;
+    
+    setAiThinking(true);
+    const history = currentMessages.map(m => ({
+      role: m.sender_id === currentUserId ? 'user' : 'assistant',
+      content: m.content
+    }));
+    
+    const aiRole = isExpresser ? 'listener' : 'expresser';
+    console.log("DEBUG: Triggering AI Response", { aiRole, historyLength: history.length });
 
-  useEffect(() => {
-    if (preloadedOtherProfile) { setOtherProfile(preloadedOtherProfile); return }
-    if (isAIChat) return
-    async function load() {
-      if (!isExpresser && post?.user_id) {
-        const { data } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', post.user_id).single()
-        if (data) setOtherProfile(data)
-      } else if (isExpresser) {
-        const { data: s } = await supabase.from('sessions').select('listener_id').eq('id', sessionId).single()
-        if (s?.listener_id) { const { data } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', s.listener_id).single(); if (data) setOtherProfile(data) }
+    const aiText = await getAIResponse(history, aiRole, post?.content);
+    setAiThinking(false);
+
+    if (aiText) {
+      setOtherTyping(true);
+      await new Promise(r => setTimeout(r, 1500));
+      setOtherTyping(false);
+
+      const aiMsg = { 
+        id: `ai-${Date.now()}`, 
+        session_id: sessionId,
+        sender_id: '00000000-0000-0000-0000-000000000001', 
+        content: aiText, 
+        is_ai_msg: true,
+        created_at: new Date().toISOString()
+      };
+      
+      setMessages(prev => [...prev, aiMsg]);
+      // Optional: Save to Supabase if session exists
+      if (sessionId && !String(sessionId).startsWith('seed-')) {
+        await supabase.from('messages').insert({ 
+          session_id: sessionId, 
+          sender_id: '00000000-0000-0000-0000-000000000001', 
+          content: aiText, 
+          is_ai_msg: true 
+        });
       }
     }
-    load()
-  }, [post, isExpresser, isAIChat, sessionId, preloadedOtherProfile])
+  }
 
+  useEffect(() => { setSessionId(initialSessionId) }, [initialSessionId])
+
+  // 2. LOAD MESSAGES & AUTO-TRIGGER FOR AI
   useEffect(() => {
     seenIds.current = new Set()
     
-    async function loadSeedFromSupabase() {
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('session_id', sessionId)
-        .order('created_at', { ascending: true })
+    async function loadChat() {
+      setLoading(true);
+      let msgs = [];
       
-      const msgs = data || []
-      
-      if (msgs.length > 0) {
-        msgs.forEach(m => seenIds.current.add(m.id))
-        setMessages(msgs)
-        setHasInteracted(msgs.some(m => m.sender_id === currentUserId))
+      if (sessionId && !String(sessionId).startsWith('seed-')) {
+        const { data } = await supabase.from('messages').select('*').eq('session_id', sessionId).order('created_at', { ascending: true });
+        msgs = data || [];
       } else {
-        const openingMsg = { 
-          id: `seed-init-${sessionId}`, 
-          sender_id: 'other', 
+        // Initial state for new seed/AI session
+        msgs = [{ 
+          id: 'init', 
+          sender_id: isExpresser ? currentUserId : 'other', 
           content: post?.content ?? '', 
           created_at: new Date().toISOString() 
-        }
-        setMessages([openingMsg])
-        setHasInteracted(false)
+        }];
       }
-      setLoading(false)
+
+      setMessages(msgs);
+      setLoading(false);
+
+      // FIX: If I am the listener and the only message is the AI's post, 
+      // OR if I am expresser and just started, trigger AI to talk.
+      if (isAIChat && msgs.length === 1) {
+        console.log("DEBUG: Auto-triggering AI for first message");
+        triggerAIResponse(msgs);
+      }
     }
 
-    async function loadMessages() {
-      const { data: s } = await supabase.from('sessions').select('status').eq('id', sessionId).single()
-      if (s?.status === 'closed') setSessionClosed(true)
-
-      const { data } = await supabase.from('messages').select('*').eq('session_id', sessionId).order('created_at', { ascending: true })
-      const msgs = data || []
-      msgs.forEach(m => seenIds.current.add(m.id))
-      if (msgs.some(m => m.content?.startsWith('__system__:'))) setSessionClosed(true)
-      setMessages(msgs)
-      setHasInteracted(msgs.some(m => m.sender_id === currentUserId && !m.content?.startsWith('__system__:') && !m.is_ai_msg))
-      setLoading(false)
-    }
-
-    if (isSeedSession && sessionId) {
-      loadSeedFromSupabase()
-    } else if (!sessionId) {
-      const openingMsg = { id: 'pending-open', sender_id: 'other', content: post?.content ?? '', created_at: new Date().toISOString() }
-      setMessages([openingMsg]); setLoading(false);
-    } else {
-      loadMessages()
-    }
-  }, [sessionId])
-
-  // Real-time messages
-  useEffect(() => {
-    if (isAIChat || !sessionId) return
-    const ch = supabase.channel(`chat-${sessionId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `session_id=eq.${sessionId}` },
-        (payload) => {
-          const msg = payload.new
-          if (seenIds.current.has(msg.id)) return
-          seenIds.current.add(msg.id)
-          if (msg.content?.startsWith('__system__:')) {
-            setSessionClosed(true)
-            setMessages(m => m.find(x => x.id === msg.id) ? m : [...m, msg])
-            return
-          }
-          if (msg.sender_id === currentUserId) {
-            setMessages(m => m.find(x => x.id === msg.id) ? m : [...m, msg])
-            return
-          }
-          setOtherTyping(true)
-          clearTimeout(pendingTimer.current)
-          pendingTimer.current = setTimeout(() => {
-            setOtherTyping(false)
-            setMessages(m => m.find(x => x.id === msg.id) ? m : [...m, msg])
-          }, TYPING_REVEAL_MS)
-        })
-      .subscribe()
-
-    typingChannel.current = supabase.channel(`typing-${sessionId}`)
-      .on('broadcast', { event: 'typing' }, ({ payload }) => {
-        if (payload.user_id !== currentUserId) {
-          setOtherTyping(true)
-          clearTimeout(pendingTimer.current)
-          pendingTimer.current = setTimeout(() => setOtherTyping(false), 3000)
-        }
-      })
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(ch)
-      if (typingChannel.current) supabase.removeChannel(typingChannel.current)
-      clearTimeout(pendingTimer.current)
-    }
-  }, [sessionId])
+    loadChat();
+  }, [sessionId]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, otherTyping, aiThinking])
 
-  function broadcastTyping() { typingChannel.current?.send({ type: 'broadcast', event: 'typing', payload: { user_id: currentUserId } }) }
-
   async function send() {
-    if (!input.trim() || aiThinking) return
-    const content = input.trim(); setInput(''); setHasInteracted(true)
+    if (!input.trim() || aiThinking) return;
+    const content = input.trim(); 
+    setInput(''); 
     
-    const tempId = `temp-${Date.now()}`
-    const myMsg = { id: tempId, sender_id: currentUserId, content, created_at: new Date().toISOString() }
-    seenIds.current.add(tempId)
+    const myMsg = { 
+      id: `temp-${Date.now()}`, 
+      sender_id: currentUserId, 
+      content, 
+      created_at: new Date().toISOString() 
+    };
     
-    const updated = [...messages, myMsg]
-    setMessages(updated)
+    const updated = [...messages, myMsg];
+    setMessages(updated);
+    setHasInteracted(true);
 
-    let activeSessionId = sessionId
-
-    if (!activeSessionId && post) {
-      const { data: newSession } = await supabase.from('sessions')
-        .insert({ 
-          post_id: post.id, 
-          expresser_id: isSeedSession ? '00000000-0000-0000-0000-000000000001' : post.user_id, 
-          listener_id: currentUserId, 
-          status: 'active' 
-        })
-        .select().single()
-      
-      if (newSession) {
-        activeSessionId = newSession.id
-        setSessionId(activeSessionId)
-      } else {
-        return
-      }
-    }
-
-    const { data: inserted } = await supabase.from('messages')
-      .insert({ session_id: activeSessionId, sender_id: currentUserId, content })
-      .select().single()
-
-    if (inserted) {
-      setMessages(m => m.map(msg => msg.id === tempId ? { ...msg, id: inserted.id } : msg))
-    }
-
+    // AI Logic
     if (isAIChat) {
-      setAiThinking(true)
-      const history = updated.map(m => ({
-        role: m.sender_id === currentUserId ? 'user' : 'assistant',
-        content: m.content
-      }))
-      
-      // FIX: Ensure AI role is 'expresser' when you are the listener
-      const aiRole = isExpresser ? 'listener' : 'expresser';
-      const aiText = await getAIResponse(history, aiRole, post?.content)
-      setAiThinking(false)
-
-      if (aiText) {
-        setOtherTyping(true)
-        await new Promise(r => setTimeout(r, 2000))
-        setOtherTyping(false)
-
-        const { data: aiInserted } = await supabase.from('messages')
-          .insert({ 
-            session_id: activeSessionId, 
-            sender_id: '00000000-0000-0000-0000-000000000001', 
-            content: aiText, 
-            is_ai_msg: true 
-          })
-          .select().single()
-
-        if (aiInserted) {
-            seenIds.current.add(aiInserted.id)
-            setMessages(prev => [...prev, aiInserted])
-        }
+      triggerAIResponse(updated);
+    } else {
+      // Human Logic: Insert to DB
+      if (sessionId) {
+        await supabase.from('messages').insert({ session_id: sessionId, sender_id: currentUserId, content });
       }
     }
   }
 
-  async function handleEndChat() {
-    if (sessionId && !String(sessionId).startsWith('seed-')) {
-      await supabase.from('sessions').update({ status: 'closed' }).eq('id', sessionId)
-      const systemContent = isExpresser
-        ? '__system__:The expresser has closed this conversation.'
-        : '__system__:Your listener has ended this conversation.'
-      await supabase.from('messages').insert({
-        session_id: sessionId,
-        sender_id: currentUserId,
-        content: systemContent
-      })
-    }
-    setSessionClosed(true)
-    if (isExpresser) { setShowRating(true) } else if (hasInteracted) { setEnded(true) } else { onEnd?.() }
-  }
+  const otherName = isExpresser ? 'Listener' : (post?.is_anonymous ? 'Anonymous' : (otherProfile?.full_name?.split(' ')[0] ?? 'Someone'));
+  const otherAvatar = post?.is_anonymous ? null : (otherProfile?.avatar_url ?? null);
 
-  function insertEmoji(e) { setInput(i => i + e); inputRef.current?.focus() }
-
-  const otherName = (() => {
-    const seed = SEED_POSTS.find(s => String(s.id) === String(post?.id));
-    if (seed) return seed.profiles?.full_name?.split(' ')[0] ?? 'Someone';
-    if (post?.is_anonymous) return 'Anonymous';
-    return otherProfile?.full_name?.split(' ')[0] ?? (isExpresser ? 'Listener' : 'Someone');
-  })();
-
-  const otherAvatar = (() => {
-    const seed = SEED_POSTS.find(s => String(s.id) === String(post?.id));
-    if (seed) return seed.profiles?.avatar_url ?? null;
-    if (post?.is_anonymous) return null;
-    return otherProfile?.avatar_url ?? preloadedOtherProfile?.avatar_url ?? null;
-  })();
-
-  const myName = myProfile?.full_name?.split(' ')[0] ?? 'You'
-  const myAvatar = myProfile?.avatar_url ?? null
-
-  if (showRating) return <RatingScreen onSubmit={async (r) => { if (!isAIChat) await supabase.from('sessions').update({ rating: r }).eq('id', sessionId); onEnd?.() }} onSkip={() => onEnd?.()} />
-  
-  if (ended) {
-    return (
-      <div className="page" style={{ padding: '0 28px', justifyContent: 'center', alignItems: 'center', gap: 24, textAlign: 'center' }}>
-        <div style={{ fontSize: 52, animation: 'float 3s ease-in-out infinite' }}>✨</div>
-        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(26px, 7vw, 32px)', fontWeight: 400, letterSpacing: '-0.02em', color: 'var(--teal)' }}>You showed up for {otherName}.</h2>
-        <p style={{ fontSize: 15, color: 'rgba(240,239,232,0.7)', lineHeight: 1.8, maxWidth: 300 }}>Being truly present for someone is one of the most human things there is. Thank you for being that person today.</p>
-        <button className="btn-primary" style={{ maxWidth: 300 }} onClick={onEnd}>Back to home</button>
-      </div>
-    )
-  }
+  if (showRating) return <RatingScreen onSubmit={() => onEnd?.()} onSkip={() => onEnd?.()} />
 
   return (
-    <>
-      {showEndTip && !isExpresser && <Modal title="You've started listening 💙" body="When your conversation feels complete, tap 'End' in the top right to close it with care." primaryLabel="Got it" primaryAction={onEndTipDismiss} />}
-      {showEndConfirm && <Modal
-        title={isExpresser ? 'Ready to close this conversation?' : 'End this listening session?'}
-        body={isExpresser ? 'You can always come back and express yourself again whenever you need to.' : hasInteracted ? "You've given your time and presence — that's a beautiful thing." : "It looks like you haven't responded yet. Are you sure you want to leave?"}
-        primaryLabel={isExpresser ? 'Yes, close it' : hasInteracted ? 'End session' : 'Leave without chatting'}
-        primaryAction={() => { setShowEndConfirm(false); handleEndChat() }}
-        secondaryLabel="Keep talking"
-        secondaryAction={() => setShowEndConfirm(false)}
-      />}
-
-      <div className="page" style={{ justifyContent: 'flex-start', height: '100dvh' }}>
-        <div style={{ padding: '52px 24px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-          <button onClick={() => onBack?.(hasInteracted)} style={{ color: 'rgba(240,239,232,0.5)', display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-          </button>
-          <Avatar url={otherAvatar} name={otherName} size={38} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: 15, fontWeight: 500, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{otherName}</p>
-            <p style={{ fontSize: 12, color: 'var(--teal)' }}>● {isExpresser ? 'your listener is here' : 'you are listening'}</p>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            {post?.emotion_tag && <span style={{ fontSize: 11, padding: '4px 10px', borderRadius: 10, background: 'var(--bg3)', color: 'var(--teal)', border: '1px solid rgba(93,202,165,0.2)' }}>{post.emotion_tag}</span>}
-            {!sessionClosed
-              ? <button onClick={() => setShowEndConfirm(true)} style={{ fontSize: 12, fontWeight: 600, color: '#fff', padding: '5px 12px', border: 'none', borderRadius: 8, cursor: 'pointer', background: '#E24B4A', letterSpacing: '0.02em' }}>End</button>
-              : <span style={{ fontSize: 11, color: 'rgba(240,239,232,0.35)', padding: '5px 12px', border: '1px solid var(--border)', borderRadius: 8 }}>Ended</span>
-            }
-          </div>
+    <div className="page" style={{ justifyContent: 'flex-start', height: '100dvh' }}>
+      {/* Header */}
+      <div style={{ padding: '52px 24px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+        <button onClick={() => onBack?.()} style={{ background: 'none', border: 'none', color: 'rgba(240,239,232,0.5)', cursor: 'pointer' }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        </button>
+        <Avatar url={otherAvatar} name={otherName} size={38} />
+        <div style={{ flex: 1 }}>
+          <p style={{ fontSize: 15, fontWeight: 500 }}>{otherName}</p>
+          <p style={{ fontSize: 12, color: 'var(--teal)' }}>● {isExpresser ? 'listener is here' : 'you are listening'}</p>
         </div>
-
-        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {!isExpresser && (
-            <div style={{ textAlign: 'center', padding: '10px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 8 }}>
-              <p style={{ fontSize: 12, color: 'rgba(240,239,232,0.6)', lineHeight: 1.6 }}>Be present, not a problem-solver. Let them feel heard first. 💙</p>
-            </div>
-          )}
-          {loading && <div style={{ textAlign: 'center', padding: 20 }}><span className="pulse-dot" /></div>}
-          {messages.map(msg => {
-            if (msg.content?.startsWith('__system__:')) {
-              return (
-                <div key={msg.id} style={{ textAlign: 'center', padding: '8px 16px' }}>
-                  <span style={{ fontSize: 12, color: 'rgba(240,239,232,0.4)', background: 'var(--bg2)', padding: '6px 14px', borderRadius: 20, border: '1px solid var(--border)' }}>{msg.content.replace('__system__:', '')}</span>
-                </div>
-              )
-            }
-            const isMine = msg.sender_id === currentUserId && !msg.is_ai_msg
-            return (
-              <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: isMine ? 'flex-end' : 'flex-start', gap: 4 }}>
-                {!isMine && <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}><Avatar url={otherAvatar} name={otherName} size={22} /><span style={{ fontSize: 11, color: 'rgba(240,239,232,0.5)' }}>{otherName}</span></div>}
-                {isMine && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, marginBottom: 2 }}><span style={{ fontSize: 11, color: 'rgba(240,239,232,0.5)' }}>{myName}</span><Avatar url={myAvatar} name={myName} size={22} /></div>}
-                <div style={{ maxWidth: '78%', padding: '12px 16px', borderRadius: isMine ? '18px 18px 4px 18px' : '18px 18px 18px 4px', background: isMine ? 'var(--accent)' : 'var(--bg2)', border: isMine ? 'none' : '1px solid var(--border)', fontSize: 15, lineHeight: 1.6, color: isMine ? '#fff' : 'rgba(240,239,232,0.85)' }}>{msg.content}</div>
-              </div>
-            )
-          })}
-          {(otherTyping || aiThinking) && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Avatar url={otherAvatar} name={otherName} size={22} />
-              <div className="typing-bubble">
-                <span></span><span></span><span></span>
-              </div>
-            </div>
-          )}
-          <div ref={bottomRef} />
-        </div>
-
-        {!sessionClosed ? (
-          <div style={{ padding: '12px 16px 36px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'flex-end', flexShrink: 0, position: 'relative' }}>
-            {showEmoji && <EmojiPicker onSelect={insertEmoji} onClose={() => setShowEmoji(false)} />}
-            <button onClick={() => setShowEmoji(s => !s)} className="emoji-btn">🙂</button>
-            <textarea ref={inputRef} value={input} onChange={e => { setInput(e.target.value); if (!isAIChat) broadcastTyping() }} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }} placeholder={isExpresser ? 'Say what you need to say...' : 'Say something kind...'} rows={1} className="chat-input" />
-            <button onClick={send} disabled={!input.trim() || aiThinking} className="send-btn">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
-            </button>
-          </div>
-        ) : (
-          <div className="closed-notice"><p>This conversation has ended.</p></div>
-        )}
+        <button onClick={() => setShowEndConfirm(true)} style={{ background: '#E24B4A', color: 'white', border: 'none', padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600 }}>End</button>
       </div>
-    </>
-  )
+
+      {/* Messages Area */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {messages.map((msg, i) => {
+          const isMine = msg.sender_id === currentUserId;
+          return (
+            <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: isMine ? 'flex-end' : 'flex-start', gap: 4 }}>
+              <div style={{ 
+                maxWidth: '85%', 
+                padding: '12px 16px', 
+                borderRadius: isMine ? '18px 18px 4px 18px' : '18px 18px 18px 4px', 
+                background: isMine ? 'var(--accent)' : 'var(--bg2)',
+                border: isMine ? 'none' : '1px solid var(--border)',
+                fontSize: 15,
+                lineHeight: 1.5
+              }}>
+                {msg.content}
+              </div>
+            </div>
+          )
+        })}
+        {(otherTyping || aiThinking) && <div className="typing-bubble"><span></span><span></span><span></span></div>}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* FIXED BOTTOM INPUT BAR */}
+      <div style={{ 
+        padding: '16px 20px 40px', 
+        borderTop: '1px solid var(--border)', 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: 12,
+        background: 'var(--bg)' 
+      }}>
+        <button onClick={() => setShowEmoji(!showEmoji)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', padding: 0 }}>😊</button>
+        <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center' }}>
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }}}
+            placeholder={isExpresser ? "Say what's on your mind..." : "Listen and respond..."}
+            style={{
+              width: '100%',
+              background: 'var(--bg2)',
+              border: '1px solid var(--border)',
+              borderRadius: '24px',
+              padding: '12px 48px 12px 16px',
+              color: 'white',
+              fontSize: 15,
+              resize: 'none',
+              outline: 'none',
+              minHeight: '46px',
+              maxHeight: '120px'
+            }}
+            rows={1}
+          />
+          <button 
+            onClick={send}
+            disabled={!input.trim() || aiThinking}
+            style={{
+              position: 'absolute',
+              right: '8px',
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              background: input.trim() ? 'var(--teal)' : 'rgba(255,255,255,0.1)',
+              border: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {showEmoji && (
+        <div style={{ position: 'absolute', bottom: 100, left: 20, zIndex: 10 }}>
+          <EmojiPicker onSelect={(emoji) => { setInput(prev => prev + emoji); setShowEmoji(false); }} />
+        </div>
+      )}
+    </div>
+  );
 }
 
 // Floating chat FAB rendered via portal
