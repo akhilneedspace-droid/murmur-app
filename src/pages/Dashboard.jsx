@@ -923,6 +923,7 @@ function PostCard({ post, delay, onClick }) {
 function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
   const [confirmDelete, setConfirmDelete] = useState(null)
 
+  // Date bucket label logic
   function dateBucket(isoStr) {
     const d = new Date(isoStr)
     const now = new Date()
@@ -936,9 +937,11 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
 
   const BUCKET_ORDER = ['Today', 'Yesterday', 'This week', 'This month', 'Earlier']
 
+  // Separate roles
   const myExpressions = chats.filter(c => c.expresser_id === userId)
   const myListening   = chats.filter(c => c.listener_id === userId)
 
+  // Group expressions by post for the multi-listener logic
   const expressionGroups = Object.values(
     myExpressions.reduce((acc, chat) => {
       const key = chat.posts?.id ?? chat.id
@@ -949,11 +952,13 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
     }, {})
   )
 
+  // Build unified rows
   const rows = [
     ...expressionGroups.map(g => ({ type: 'expression', date: g.date, data: g })),
     ...myListening.map(c => ({ type: 'listening', date: c.created_at, data: c })),
   ].sort((a, b) => new Date(b.date) - new Date(a.date))
 
+  // Group by date bucket
   const buckets = rows.reduce((acc, row) => {
     const b = dateBucket(row.date)
     if (!acc[b]) acc[b] = []
@@ -961,7 +966,7 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
     return acc
   }, {})
 
-  // Helper to render the unified label
+  // Unified Label Helper
   const StatusLabel = ({ status }) => {
     const isOngoing = status === 'active';
     return (
@@ -990,7 +995,6 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
         <div style={{ textAlign: 'center', padding: '48px 24px', color: 'rgba(240,239,232,0.4)' }}>
           <p style={{ fontSize: 32, marginBottom: 16 }}>◎</p>
           <p style={{ fontSize: 15 }}>No conversations yet.</p>
-          <p style={{ fontSize: 13, marginTop: 8 }}>When you connect with someone, it'll show up here.</p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 28, paddingBottom: 48 }}>
@@ -1004,7 +1008,7 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
                     const preview = post?.content?.slice(0, 100) ?? ''
                     
                     return (
-                      <div key={`exp-${id}`} style={{ padding: '14px 16px', background: 'var(--bg2)', border: `1px solid ${hasActive ? 'rgba(93,202,165,0.25)' : 'var(--border)'}`, borderRadius: 'var(--radius)' }}>
+                      <div key={`exp-${id}`} style={{ padding: '14px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                           <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', color: 'var(--accent)' }}>You expressed</span>
                           {post?.emotion_tag && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: 'var(--bg3)', color: 'rgba(240,239,232,0.5)' }}>{post.emotion_tag}</span>}
@@ -1032,6 +1036,7 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
                   // Listening card
                   const chat = row.data
                   const preview = chat.posts?.content?.slice(0, 100) ?? ''
+                  // Support for Seed Posts / AI chats
                   const seedData = typeof SEED_POSTS !== 'undefined' ? SEED_POSTS.find(s => s.id === chat.post_id) : null;
                   const otherName = seedData ? (seedData.profiles?.full_name?.split(' ')[0] ?? 'Someone') : (chat.otherProfile?.full_name?.split(' ')[0] ?? 'Someone');
                   const otherAvatar = seedData ? seedData.profiles?.avatar_url : chat.otherProfile?.avatar_url;
