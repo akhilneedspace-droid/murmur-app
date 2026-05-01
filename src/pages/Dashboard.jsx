@@ -698,16 +698,16 @@ function ListenerView({ user, myProfile, todayListenerCount, seedPosts, onBack, 
 
     // 2. Fetch the posts from the database
     const { data: postsData } = await supabase
-      .from('posts')
-      .select('*, profiles(full_name, avatar_url)')
-      .eq('status', 'open')
-      .neq('user_id', user.id)
-      .order('created_at', { ascending: false })
+    .from('posts')
+    .select('*, profiles(full_name, avatar_url)')
+    .eq('status', 'open')
+    .neq('user_id', user.id)
+    .order('created_at', { descending: false })
     
     // CHANGE HERE: Use 'seedPosts' from props instead of the global SEED_POSTS
     // This ensures "Sake" is included and correctly filtered.
     setPosts([...(postsData || []), ...(seedPosts || [])])
-    setLoading(false)
+  setLoading(false)
   }
 
  async function handleSelectPost(post) {
@@ -923,7 +923,6 @@ function PostCard({ post, delay, onClick }) {
 function PastChatsView({ chats, userId, onOpen, onDelete, onBack, SEED_POSTS = [] }) {
   const [confirmDelete, setConfirmDelete] = useState(null);
 
-  // Date bucket label logic
   function dateBucket(isoStr) {
     const d = new Date(isoStr);
     const now = new Date();
@@ -931,20 +930,17 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack, SEED_POSTS = [
     if (diffDays === 0) return 'Today';
     if (diffDays === 1) return 'Yesterday';
     if (diffDays < 7) return 'This week';
-    if (diffDays < 30) return 'This month';
     return 'Earlier';
   }
 
-  const BUCKET_ORDER = ['Today', 'Yesterday', 'This week', 'This month', 'Earlier'];
-
-  // 1. Separate roles
+  // 1. Separate roles + Handle Seed Post Sessions
   const myExpressions = chats.filter(c => c.expresser_id === userId);
   const myListening = chats.filter(c => c.listener_id === userId);
 
-  // 2. Group expressions by post (Standard functionality)
+  // 2. Group expressions (Restores the Multi-Listener FAB logic)
   const expressionGroups = Object.values(
     myExpressions.reduce((acc, chat) => {
-      const key = chat.posts?.id ?? chat.id;
+      const key = chat.post_id || chat.id;
       if (!acc[key]) acc[key] = { post: chat.posts, sessions: [], date: chat.created_at, id: key };
       acc[key].sessions.push(chat);
       if (new Date(chat.created_at) > new Date(acc[key].date)) acc[key].date = chat.created_at;
@@ -952,13 +948,11 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack, SEED_POSTS = [
     }, {})
   );
 
-  // 3. Build unified rows for sorting
   const rows = [
     ...expressionGroups.map(g => ({ type: 'expression', date: g.date, data: g })),
     ...myListening.map(c => ({ type: 'listening', date: c.created_at, data: c })),
   ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  // 4. Group by date bucket
   const buckets = rows.reduce((acc, row) => {
     const b = dateBucket(row.date);
     if (!acc[b]) acc[b] = [];
@@ -966,103 +960,66 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack, SEED_POSTS = [
     return acc;
   }, {});
 
-  // Shared Status Component
-  const StatusLabel = ({ status }) => {
-    const isOngoing = status === 'active';
-    return (
-      <span style={{ 
-        fontSize: 10, padding: '2px 7px', borderRadius: 6, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase',
-        background: isOngoing ? 'rgba(93,202,165,0.15)' : 'rgba(136,135,128,0.15)', 
-        color: isOngoing ? 'var(--teal)' : 'rgba(240,239,232,0.4)'
-      }}>
-        {isOngoing ? 'Ongoing' : 'Ended'}
-      </span>
-    );
-  };
-
   return (
-    <div className="page" style={{ padding: '0 24px', justifyContent: 'flex-start' }}>
-      <div style={{ position: 'relative', zIndex: 1, paddingTop: 52, marginBottom: 24 }}>
-        <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'rgba(240,239,232,0.5)', fontSize: 14, marginBottom: 20, background: 'none', border: 'none', cursor: 'pointer' }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-          Back
-        </button>
-        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 400, letterSpacing: '-0.01em', marginBottom: 6, color: 'var(--text)' }}>Your conversations</h2>
-        <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.5)' }}>{rows.length} total · grouped by date</p>
+    <div className="past-chats-container" style={{ padding: '24px', color: 'var(--text)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 32 }}>
+        <button onClick={onBack} className="back-btn">←</button>
+        <h2 style={{ margin: 0, fontSize: 24, fontWeight: 500 }}>Conversations</h2>
       </div>
 
-      {rows.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px 24px', color: 'rgba(240,239,232,0.4)' }}>
-          <p style={{ fontSize: 32, marginBottom: 16 }}>◎</p>
-          <p style={{ fontSize: 15 }}>No conversations yet.</p>
-        </div>
+      {Object.keys(buckets).length === 0 ? (
+        <div style={{ opacity: 0.5, textAlign: 'center', marginTop: 40 }}>No conversations yet.</div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 28, paddingBottom: 48 }}>
-          {BUCKET_ORDER.filter(b => buckets[b]).map(bucket => (
-            <div key={bucket}>
-              <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(240,239,232,0.35)', marginBottom: 10 }}>{bucket}</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {buckets[bucket].map(row => {
-                  if (row.type === 'expression') {
-                    const { post, sessions, id } = row.data;
-                    const preview = post?.content?.slice(0, 80) ?? 'No content';
-                    return (
-                      <div key={`exp-${id}`} style={{ padding: '14px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                          <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', color: 'var(--accent)' }}>You expressed</span>
-                          {post?.emotion_tag && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, background: 'var(--bg3)', color: 'rgba(240,239,232,0.5)' }}>{post.emotion_tag}</span>}
-                        </div>
-                        <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.75)', lineHeight: 1.6, marginBottom: 10 }}>"{preview}..."</p>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          {sessions.map((session, idx) => {
-                            const name = session.otherProfile?.full_name?.split(' ')[0] ?? `Listener ${idx + 1}`;
-                            return (
-                              <div key={session.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'var(--bg3)', borderRadius: 8 }}>
-                                <Avatar url={session.otherProfile?.avatar_url} name={name} size={20} />
-                                <span style={{ fontSize: 13, color: 'rgba(240,239,232,0.7)', flex: 1 }}>{name}</span>
-                                <StatusLabel status={session.status} />
-                                <button onClick={() => onOpen(session)} style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Open</button>
-                                <button onClick={() => setConfirmDelete(session.id)} style={{ color: 'rgba(240,239,232,0.25)', fontSize: 14, background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    );
-                  }
+        ['Today', 'Yesterday', 'This week', 'Earlier'].map(b => buckets[b] && (
+          <div key={b} style={{ marginBottom: 32 }}>
+            <h4 style={{ fontSize: 12, textTransform: 'uppercase', opacity: 0.4, marginBottom: 16 }}>{b}</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {buckets[b].map((row, i) => {
+                const isExp = row.type === 'expression';
+                const item = row.data;
 
-                  // Listening Card (Handles normal and Seed Posts)
-                  const chat = row.data;
-                  const isSeed = !chat.posts && chat.post_id?.startsWith('seed-'); // Common pattern for seeds
-                  const seedInfo = isSeed ? SEED_POSTS.find(s => s.id === chat.post_id) : null;
-                  
-                  const otherName = seedInfo ? 'Seed Post' : (chat.otherProfile?.full_name?.split(' ')[0] ?? 'Someone');
-                  const otherAvatar = seedInfo ? null : chat.otherProfile?.avatar_url;
-                  const preview = chat.posts?.content?.slice(0, 80) ?? seedInfo?.content?.slice(0, 80) ?? 'View conversation';
+                // Logic to identify Seed Post details for the "Listening" view
+                let seedContent = null;
+if (!isExp && (!item.posts || item.expresser_id === '00000000-0000-0000-0000-000000000001')) {
+  seedContent = SEED_POSTS.find(s => s.id === item.post_id);
+                }
 
-                  return (
-                    <div key={`listen-${chat.id}`} style={{ padding: '14px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                      <button onClick={() => onOpen(chat)} style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <Avatar url={otherAvatar} name={otherName} size={24} />
-                            <span style={{ fontSize: 13, color: 'rgba(240,239,232,0.8)', fontWeight: 500 }}>{otherName}</span>
-                            <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', color: 'var(--teal)' }}>You listened</span>
-                            <StatusLabel status={chat.status} />
-                          </div>
-                        </div>
-                        <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.7)', lineHeight: 1.6 }}>"{preview}..."</p>
-                      </button>
-                      <button onClick={() => setConfirmDelete(chat.id)} style={{ color: 'rgba(240,239,232,0.25)', fontSize: 20, padding: 4, background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
+                return (
+                  <div key={i} className="chat-card" style={{
+                    background: 'var(--bg2)', padding: '16px', borderRadius: '16px', border: '1px solid var(--border)'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+                      <span style={{ fontSize: 11, color: isExp ? 'var(--accent)' : 'var(--teal)', fontWeight: 600 }}>
+                        {isExp ? 'YOUR EXPRESSION' : 'YOU LISTENED'}
+                      </span>
+                      <button onClick={() => setConfirmDelete(isExp ? item.id : item.id)} style={{ background: 'none', border: 'none', color: 'red', opacity: 0.3 }}>Delete</button>
                     </div>
-                  );
-                })}
-              </div>
+
+                    <p style={{ margin: '0 0 16px 0', fontSize: 14, opacity: 0.8 }}>
+                      {isExp ? (item.post?.content || "No content") : (item.posts?.content || seedContent?.content || "Seed conversation")}
+                    </p>
+
+                    {/* LISTENER AVATARS / SESSIONS */}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {isExp ? item.sessions.map(s => (
+                        <div key={s.id} onClick={() => onOpen(s)} style={{ cursor: 'pointer', position: 'relative' }}>
+                          <Avatar url={s.otherProfile?.avatar_url} size={32} />
+                          {s.status === 'active' && <div className="status-indicator" />}
+                        </div>
+                      )) : (
+                        <div onClick={() => onOpen(item)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <Avatar url={seedContent ? null : item.otherProfile?.avatar_url} name={seedContent ? "AI" : item.otherProfile?.full_name} size={32} />
+                          <span style={{ fontSize: 12 }}>{seedContent ? "AI Mentor" : item.otherProfile?.full_name}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          ))}
-        </div>
+          </div>
+        ))
       )}
-      {confirmDelete && <Modal title="Delete conversation?" body="This can't be undone." primaryLabel="Delete" primaryAction={() => { onDelete(confirmDelete); setConfirmDelete(null) }} secondaryLabel="Keep" secondaryAction={() => setConfirmDelete(null)} danger />}
     </div>
   );
 }
@@ -1179,61 +1136,56 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, otherTyping, aiThinking])
 
   // 4. Send Function
-  async function send() {
-    if (!input.trim() || aiThinking) return
-    const content = input.trim(); setInput(''); setHasInteracted(true)
-    const tempId = `temp-${Date.now()}`
-    const myMsg = { id: tempId, sender_id: currentUserId, content, created_at: new Date().toISOString() }
+  // REPLACE your current send() function with this one:
+async function send() {
+  if (!input.trim() || aiThinking) return
+  const content = input.trim(); setInput(''); setHasInteracted(true)
+  const tempId = `temp-${Date.now()}`
+  const myMsg = { id: tempId, sender_id: currentUserId, content, created_at: new Date().toISOString() }
+  
+  setMessages(prev => [...prev, myMsg])
+
+  let activeId = sessionId
+
+  // Logic to convert local seed sessions to real DB sessions on first message
+  if (!activeId || String(activeId).startsWith('seed-')) {
+    const { data: newSession } = await supabase.from('sessions').insert({
+      post_id: post.id,
+      expresser_id: isSeedSession ? currentUserId : post.user_id,
+      listener_id: isSeedSession ? '00000000-0000-0000-0000-000000000001' : currentUserId,
+      status: 'active',
+      is_ai: isAIChat // Use is_ai to match your schema
+    }).select().single()
     
-    setMessages(prev => [...prev, myMsg])
-
-    let activeId = sessionId
-
-    // FIX: If it's a seed session or doesn't have an ID yet, create a REAL session in the DB
-    if (!activeId || String(activeId).startsWith('seed-')) {
-      const { data: newSession, error } = await supabase.from('sessions').insert({
-        post_id: post.id,
-        expresser_id: isSeedSession ? currentUserId : post.user_id, // If seed, YOU are the expresser
-        listener_id: isSeedSession ? 'ai-listener' : currentUserId,
-        status: 'active',
-        is_ai_session: isAIChat
-      }).select().single()
-      
-      if (newSession) {
-        activeId = newSession.id
-        setSessionId(activeId)
-      }
-    }
-
-    if (isAIChat) {
-      setAiThinking(true)
-      const history = [...messages, myMsg].map(m => ({ 
-        role: m.sender_id === currentUserId ? 'user' : 'assistant', 
-        content: m.content 
-      }))
-      const aiText = await getAIResponse(history, isSeedSession ? 'expresser' : 'listener', post?.content ?? '')
-      setAiThinking(false)
-      
-      if (aiText) {
-        setOtherTyping(true); await new Promise(r => setTimeout(r, 1500)); setOtherTyping(false)
-        const aiMsg = { id: `ai-${Date.now()}`, sender_id: 'other', content: aiText, is_ai_msg: true, created_at: new Date().toISOString() }
-        setMessages(prev => [...prev, aiMsg])
-        
-        // Save both your message and AI's message to the real session
-        await supabase.from('messages').insert([
-          { session_id: activeId, sender_id: currentUserId, content },
-          { session_id: activeId, sender_id: 'ai-listener', content: aiText, is_ai_msg: true }
-        ])
-      }
-    } else {
-      // Normal human chat saving
-      await supabase.from('messages').insert({ 
-        session_id: activeId, 
-        sender_id: currentUserId, 
-        content 
-      })
+    if (newSession) {
+      activeId = newSession.id
+      setSessionId(activeId)
     }
   }
+
+  if (isAIChat) {
+    setAiThinking(true)
+    const history = [...messages, myMsg].map(m => ({ 
+      role: m.sender_id === currentUserId ? 'user' : 'assistant', 
+      content: m.content 
+    }))
+    const aiText = await getAIResponse(history, isSeedSession ? 'expresser' : 'listener', post?.content ?? '')
+    setAiThinking(false)
+    
+    if (aiText) {
+      setOtherTyping(true); await new Promise(r => setTimeout(r, 1500)); setOtherTyping(false)
+      const aiMsg = { id: `ai-${Date.now()}`, sender_id: 'other', content: aiText, is_ai_msg: true, created_at: new Date().toISOString() }
+      setMessages(prev => [...prev, aiMsg])
+      
+      await supabase.from('messages').insert([
+        { session_id: activeId, sender_id: currentUserId, content },
+        { session_id: activeId, sender_id: '00000000-0000-0000-0000-000000000001', content: aiText, is_ai_msg: true }
+      ])
+    }
+  } else {
+    await supabase.from('messages').insert({ session_id: activeId, sender_id: currentUserId, content })
+  }
+}
 
   // 5. End Chat Logic
   async function handleEndChat() {
