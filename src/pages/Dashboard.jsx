@@ -650,49 +650,51 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   }
 
   async function handleSelectPost(post) {
-    if (todayListenerCount >= DAILY_LISTEN_LIMIT) { setShowBurnoutBlock(true); return }
-    
-    if (post.is_seed) {
-      // 1. Create a real session in Supabase
-      const { data: newSession, error } = await supabase
-        .from('sessions')
-        .insert({
-          post_id: post.id, // Ensure this is a UUID like '00000000-0000-0000-0000-000000000007'
-          expresser_id: '00000000-0000-0000-0000-000000000001', 
-          listener_id: user.id,
-          status: 'active'
-        })
-        .select()
-        .single()
+  if (todayListenerCount >= DAILY_LISTEN_LIMIT) { setShowBurnoutBlock(true); return }
+  
+  // 1. Check if a session already exists for this post and user FIRST
+  // This prevents the 409 Conflict error
+  const { data: existing, error: fetchError } = await supabase
+    .from('sessions')
+    .select('*')
+    .eq('post_id', post.id)
+    .eq('listener_id', user.id)
+    .maybeSingle() // Use maybeSingle to avoid 406 errors
 
-      if (error) {
-        // This will pop up an error message on your screen if the DB rejects it
-        console.error("Supabase Error:", error.message);
-        
-        // Fallback to old behavior so the UI doesn't crash
-setActiveSession({ id: post.id, is_seed: true, post })
-      } 
-      else {
-        console.log("Session successfully created:", newSession.id);
-        // Use the new REAL DB id
-setActiveSession({ id: newSession.id, is_seed: true, post })      }
-      
-      setShowEndTip(true)
-      return
-    }
-
-    // Existing logic for human posts...
-    const { data: existing } = await supabase.from('sessions')
-      .select('*').eq('post_id', post.id).eq('listener_id', user.id).single()
-
-    if (existing) {
-      setActiveSession({ ...existing, post })
-      return
-    }
-
-    setActiveSession({ id: null, post, isPending: true })
-    setShowEndTip(true)
+  if (existing) {
+    setActiveSession({ ...existing, post, is_seed: post.is_seed })
+    if (post.is_seed) setShowEndTip(true)
+    return
   }
+
+  // 2. If it's a seed post and no session exists, create one
+  if (post.is_seed) {
+    const { data: newSession, error: insertError } = await supabase
+      .from('sessions')
+      .insert({
+        post_id: post.id, 
+        expresser_id: '00000000-0000-0000-0000-000000000001', 
+        listener_id: user.id,
+        status: 'active'
+      })
+      .select()
+      .single()
+
+    if (insertError) {
+      console.error("Critical: Cannot create session. Is post.id valid?", insertError);
+      // If the post.id doesn't exist in the 'posts' table, this will ALWAYS fail.
+      return 
+    } 
+
+    setActiveSession({ ...newSession, is_seed: true, post })
+    setShowEndTip(true)
+    return
+  }
+
+  // 3. Fallback for human posts (unchanged)
+  setActiveSession({ id: null, post, isPending: true })
+  setShowEndTip(true)
+}
 
   if (showBurnoutBlock) {
     return (
