@@ -10,9 +10,9 @@ function getGreeting() {
   const h = new Date().getHours()
   if (h >= 23 || h < 4)  return 'Still '
   if (h >= 4  && h < 12) return 'Good Mor'
-  if (h >= 12 && h < 16) return 'Good AA'
-  if (h >= 16 && h < 18) return 'Goodev'
-  if (h >= 18 && h < 20) return 'Hope your evening is go '
+  if (h >= 12 && h < 16) return 'Good af'
+  if (h >= 16 && h < 18) return 'Good e'
+  if (h >= 18 && h < 20) return 'Hope your evening is going great!'
   return "Don't forget to sleep on time. Good "
 }
 
@@ -762,8 +762,22 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
 
 function PostCard({ post, delay, onClick }) {
   const [hovered, setHovered] = useState(false)
-  const name = post.is_anonymous ? 'Anonymous' : (post.profiles?.full_name?.split(' ')[0] ?? 'Someone')
-  const avatarUrl = post.is_anonymous ? null : post.profiles?.avatar_url
+ // ADD THIS LINE: Check if this post is one of your seeds (Aisha, Priya, etc.)
+
+  const seed = SEED_POSTS.find(s => s.id === post.id);
+  // Update name logic to check the seed first
+
+  const name = seed 
+
+    ? (seed.is_anonymous ? 'Anonymous' : (seed.profiles?.full_name?.split(' ')[0] ?? 'Someone'))
+    : (post.is_anonymous ? 'Anonymous' : (post.profiles?.full_name?.split(' ')[0] ?? 'Someone'));
+
+  // Update avatar logic to check the seed first
+
+  const avatarUrl = seed
+    ? (seed.is_anonymous ? null : seed.profiles?.avatar_url)
+    : (post.is_anonymous ? null : post.profiles?.avatar_url);
+
   const timeAgo = d => { const m = Math.floor((Date.now() - new Date(d)) / 60000); if (m < 1) return 'just now'; if (m < 60) return `${m} min ago`; return `${Math.floor(m / 60)}h ago` }
   return (
     <button onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
@@ -923,16 +937,11 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
 
                   // Listening card
                   const chat = row.data
-                  const seedData = SEED_POSTS.find(s => s.id === chat.post_id)
                   const isOngoing = chat.status === 'active'
                   const preview = chat.posts?.content?.slice(0, 100) ?? ''
                   const isAnon = chat.posts?.is_anonymous
-                  const otherName = seedData 
-                    ? (seed.profiles?.full_name?.split(' ')[0] ?? 'Someone')
-                    : (post.profiles?.full_name?.split(' ')[0] ?? 'Someone');
-                  const otherAvatar = seedData 
-                    ? seed.profiles?.avatar_url
-  : post.profiles?.avatar_url;
+                  const otherName = isAnon ? 'Anonymous' : (chat.otherProfile?.full_name?.split(' ')[0] ?? 'Someone')
+                  const otherAvatar = isAnon ? null : chat.otherProfile?.avatar_url
 
                   return (
                     <div key={`listen-${chat.id}`} style={{ padding: '14px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
@@ -1323,32 +1332,16 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
 
   function insertEmoji(e) { setInput(i => i + e); inputRef.current?.focus() }
 
-  // --- Inside ChatView.js ---
-
   const otherName = (() => {
-    // 1. Look for the post in your hardcoded list first
-    const seed = SEED_POSTS.find(s => s.id === post?.id || s.id === post?.post_id);
-
-    if (seed) {
-      return seed.profiles?.full_name?.split(' ')[0] ?? 'Someone';
-    }
-    
-    // 2. Fallback for AI Listeners (General AI)
-    if (isAISession) return 'AI Listener';
-
-    // 3. Normal human profile logic
-    if (post?.is_anonymous) return 'Anonymous';
-    return otherProfile?.full_name?.split(' ')[0] ?? (isExpresser ? 'Listener' : 'Someone');
-  })();
-
+    if (isSeedSession) return post?.is_anonymous ? 'Anonymous' : (post?.profiles?.full_name?.split(' ')[0] ?? 'Someone')
+    if (post?.is_anonymous) return 'Anonymous'
+    return otherProfile?.full_name?.split(' ')[0] ?? (isExpresser ? 'Listener' : 'Someone')
+  })()
   const otherAvatar = (() => {
-    const seed = SEED_POSTS.find(s => s.id === post?.id || s.id === post?.post_id);
-    
-    if (seed) return seed.profiles?.avatar_url ?? null;
-    if (isAISession || post?.is_anonymous) return null;
-    return otherProfile?.avatar_url ?? null;
-  })();
-
+    if (isSeedSession) return post?.is_anonymous ? null : (post?.profiles?.avatar_url ?? null)
+    if (post?.is_anonymous) return null
+    return otherProfile?.avatar_url ?? null
+  })()
   const myName = myProfile?.full_name?.split(' ')[0] ?? 'You'
   const myAvatar = myProfile?.avatar_url ?? null
 
