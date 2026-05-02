@@ -668,15 +668,14 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
       if (error) {
         // This will pop up an error message on your screen if the DB rejects it
         console.error("Supabase Error:", error.message);
-        alert("Database Error: " + error.message + " - Check your Browser Console.");
         
         // Fallback to old behavior so the UI doesn't crash
-        setActiveSession({ id: `{post.id}`, is_seed: true, post })
-      } else {
+setActiveSession({ id: post.id, is_seed: true, post })
+      } 
+      else {
         console.log("Session successfully created:", newSession.id);
         // Use the new REAL DB id
-        setActiveSession({ id: newSession.id, is_seed: true, post })
-      }
+setActiveSession({ id: newSession.id, is_seed: true, post })      }
       
       setShowEndTip(true)
       return
@@ -1242,7 +1241,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
   let activeSessionId = sessionId
 
   // IMPORTANT: If we don't have a sessionId, we MUST create one before saving messages
-  if (!activeSessionId && post) {
+  if ((!activeSessionId || activeSessionId === 'pending') && post) {
     const { data: newSession, error } = await supabase.from('sessions')
       .insert({ 
         post_id: post.id, 
@@ -1270,8 +1269,9 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
     setMessages(m => m.map(msg => msg.id === tempId ? { ...msg, id: inserted.id } : msg))
   }
 
+  const reallyIsAIChat = isAIChat || post?.is_seed;
   // Handle AI Response
-  if (isAIChat) {
+  if (reallyIsAIChat) {
     setAiThinking(true)
     const history = updated.map(m => ({
       role: m.sender_id === currentUserId ? 'user' : 'assistant',
