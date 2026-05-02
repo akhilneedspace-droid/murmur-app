@@ -650,6 +650,9 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   }
 
   async function handleSelectPost(post) {
+
+    console.log("Post Clicked:", post);
+    
   if (todayListenerCount >= DAILY_LISTEN_LIMIT) {
     setShowBurnoutBlock(true);
     return;
