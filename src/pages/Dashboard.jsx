@@ -650,39 +650,39 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   }
 
   async function handleSelectPost(post) {
-
-    console.log("Post Clicked:", post);
-    
+  // 1. Burnout check
   if (todayListenerCount >= DAILY_LISTEN_LIMIT) {
     setShowBurnoutBlock(true);
     return;
   }
 
-  // 1. Clean the ID immediately so it matches the UUID format in Supabase
+  console.log("Post Clicked:", post);
+
+  // 2. Normalize the ID (Removes 'seed-' if it was there)
   const cleanId = post.id.toString().replace('seed-', '');
 
-  // 2. Try to find an existing session first to avoid duplicates (409 errors)
-  const { data: existing } = await supabase
-    .from('sessions')
-    .select('*')
-    .eq('post_id', cleanId)
-    .eq('listener_id', user.id)
-    .maybeSingle();
+  // 3. SEED POST LOGIC (AI Chat)
+  if (post.is_seed) {
+    // Check if we already have a session in state or DB
+    const { data: existing } = await supabase
+      .from('sessions')
+      .select('*')
+      .eq('post_id', cleanId)
+      .eq('listener_id', user.id)
+      .maybeSingle();
 
-  if (existing) {
-    // If found, just jump into the chat
-    setActiveSession({ ...existing, post: { ...post, id: cleanId }, is_seed: post.is_seed });
-    if (post.is_seed) setShowEndTip(true);
-    return;
-  }
+    if (existing) {
+      setActiveSession({ ...existing, post: { ...post, id: cleanId }, is_seed: true });
+      setShowEndTip(true);
+      return;
+    }
 
-  // 3. If it's a seed post and no session exists, create it NOW
-  if (post.is_seed || post.id.toString().includes('seed-')) {
+    // Try to create the session
     const { data: newSession, error } = await supabase
       .from('sessions')
       .insert({
         post_id: cleanId,
-        expresser_id: '00000000-0000-0000-0000-000000000001',
+        expresser_id: '00000000-0000-0000-0000-000000000001', // AI ID
         listener_id: user.id,
         status: 'active'
       })
@@ -691,16 +691,40 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
 
     if (error) {
       console.error("Supabase Error during session creation:", error.message);
-      return;
+      
+      /* 
+         CRITICAL FALLBACK: If the post ID doesn't exist in the 'posts' table,
+         the database will always throw that FKey error. 
+         To let the user chat anyway, we set a 'virtual' session.
+      */
+      setActiveSession({ 
+        id: cleanId, // We use the post ID as the session ID fallback
+        post: { ...post, id: cleanId }, 
+        is_seed: true,
+        isVirtual: true // Mark it so we know it's not in the DB yet
+      });
+    } else {
+      setActiveSession({ ...newSession, post: { ...post, id: cleanId }, is_seed: true });
     }
-
-    setActiveSession({ ...newSession, is_seed: true, post: { ...post, id: cleanId } });
+    
     setShowEndTip(true);
     return;
   }
 
-  // 4. Default for human posts (stays 'pending' until first message)
-  setActiveSession({ id: null, post: { ...post, id: cleanId }, isPending: true });
+  // 4. HUMAN POST LOGIC
+  const { data: existingHuman } = await supabase
+    .from('sessions')
+    .select('*')
+    .eq('post_id', cleanId)
+    .eq('listener_id', user.id)
+    .maybeSingle();
+
+  if (existingHuman) {
+    setActiveSession({ ...existingHuman, post: { ...post, id: cleanId } });
+  } else {
+    // If new human post, set as pending until first message
+    setActiveSession({ id: null, post: { ...post, id: cleanId }, isPending: true });
+  }
   setShowEndTip(true);
 }
 
