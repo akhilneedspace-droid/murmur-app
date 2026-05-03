@@ -650,81 +650,50 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   }
 
   async function handleSelectPost(post) {
-  // 1. Burnout check
-  if (todayListenerCount >= DAILY_LISTEN_LIMIT) {
-    setShowBurnoutBlock(true);
-    return;
-  }
+  if (todayListenerCount >= DAILY_LISTEN_LIMIT) { setShowBurnoutBlock(true); return }
 
-  console.log("Post Clicked:", post);
-
-  // 2. Normalize the ID (Removes 'seed-' if it was there)
+  // Clean the ID for database compatibility
   const cleanId = post.id.toString().replace('seed-', '');
 
-  // 3. SEED POST LOGIC (AI Chat)
-  if (post.is_seed) {
-    // Check if we already have a session in state or DB
-    const { data: existing } = await supabase
-      .from('sessions')
-      .select('*')
-      .eq('post_id', cleanId)
-      .eq('listener_id', user.id)
-      .maybeSingle();
-
-    if (existing) {
-      setActiveSession({ ...existing, post: { ...post, id: cleanId }, is_seed: true });
-      setShowEndTip(true);
-      return;
-    }
-
-    // Try to create the session
-    const { data: newSession, error } = await supabase
-      .from('sessions')
-      .insert({
-        post_id: cleanId,
-        expresser_id: '00000000-0000-0000-0000-000000000001', // AI ID
-        listener_id: user.id,
-        status: 'active'
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error("Supabase Error during session creation:", error.message);
-      
-      /* 
-         CRITICAL FALLBACK: If the post ID doesn't exist in the 'posts' table,
-         the database will always throw that FKey error. 
-         To let the user chat anyway, we set a 'virtual' session.
-      */
-      setActiveSession({ 
-        id: cleanId, // We use the post ID as the session ID fallback
-        post: { ...post, id: cleanId }, 
-        is_seed: true,
-        isVirtual: true // Mark it so we know it's not in the DB yet
-      });
-    } else {
-      setActiveSession({ ...newSession, post: { ...post, id: cleanId }, is_seed: true });
-    }
-    
-    setShowEndTip(true);
-    return;
-  }
-
-  // 4. HUMAN POST LOGIC
-  const { data: existingHuman } = await supabase
+  // 1. Check for existing session first
+  const { data: existing } = await supabase
     .from('sessions')
     .select('*')
     .eq('post_id', cleanId)
     .eq('listener_id', user.id)
     .maybeSingle();
 
-  if (existingHuman) {
-    setActiveSession({ ...existingHuman, post: { ...post, id: cleanId } });
-  } else {
-    // If new human post, set as pending until first message
-    setActiveSession({ id: null, post: { ...post, id: cleanId }, isPending: true });
+  if (existing) {
+    // If it exists, we just open it. 
+    // To hide it from the feed, ensure your 'posts' filter checks 'existing sessions'
+    setActiveSession({ ...existing, post: { ...post, id: cleanId }, is_seed: post.is_seed });
+    return;
   }
+
+  // 2. Handle Seed Posts
+  if (post.is_seed || post.id.toString().includes('seed-')) {
+    const { data: newSession, error } = await supabase
+      .from('sessions')
+      .insert({
+        post_id: cleanId,
+        expresser_id: '00000000-0000-0000-0000-000000000001',
+        listener_id: user.id,
+        status: 'active'
+      })
+      .select().single();
+
+    if (newSession) {
+      setActiveSession({ ...newSession, post: { ...post, id: cleanId }, is_seed: true });
+    } else {
+      // Fallback to let the chat open even if DB insert fails
+      setActiveSession({ id: cleanId, post: { ...post, id: cleanId }, is_seed: true });
+    }
+    setShowEndTip(true);
+    return;
+  }
+
+  // 3. Handle Human Posts
+  setActiveSession({ id: null, post: { ...post, id: cleanId }, isPending: true });
   setShowEndTip(true);
 }
 
@@ -1269,57 +1238,41 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
   const tempId = `temp-${Date.now()}`;
   const myMsg = { id: tempId, sender_id: currentUserId, content, created_at: new Date().toISOString() };
   seenIds.current.add(tempId);
-
-  // Optimistic UI update
-  const updated = [...messages, myMsg];
-  setMessages(updated);
+  setMessages(prev => [...prev, myMsg]);
 
   let activeSessionId = sessionId;
 
-  // IMPORTANT: Ensure we have a real UUID session before saving messages
+  // Force session creation if it doesn't exist yet
   if ((!activeSessionId || activeSessionId === 'pending') && post) {
     const cleanPostId = post.id.toString().replace('seed-', '');
-    
-    const { data: newSession, error } = await supabase
-      .from('sessions')
-      .insert({
-        post_id: cleanPostId,
-        expresser_id: isSeedSession ? '00000000-0000-0000-0000-000000000001' : post.user_id,
-        listener_id: currentUserId,
-        status: 'active'
+    const { data: newSession } = await supabase.from('sessions')
+      .insert({ 
+        post_id: cleanPostId, 
+        expresser_id: (isSeedSession || post.is_seed) ? '00000000-0000-0000-0000-000000000001' : post.user_id, 
+        listener_id: currentUserId, 
+        status: 'active' 
       })
-      .select()
-      .single();
-
+      .select().single();
+    
     if (newSession) {
       activeSessionId = newSession.id;
       setSessionId(activeSessionId);
-    } else {
-      console.error("Failed to create session in send():", error);
-      return; // Stop here to prevent ForeignKey violation
     }
   }
 
-  // Save the User Message
-  const { data: inserted } = await supabase
-    .from('messages')
-    .insert({ session_id: activeSessionId, sender_id: currentUserId, content })
-    .select()
-    .single();
+  // Save User Message
+  await supabase.from('messages').insert({ session_id: activeSessionId, sender_id: currentUserId, content });
 
-  if (inserted) {
-    setMessages(m => m.map(msg => msg.id === tempId ? { ...msg, id: inserted.id } : msg));
-  }
+  // AI TRIGGER: We check BOTH the state AND the post object directly
+  const shouldAIPly = isAIChat || post?.is_seed || (post?.id && post.id.toString().includes('00000000'));
 
-  // AI Response Logic
-  const reallyIsAIChat = isAIChat || post?.is_seed;
-  if (reallyIsAIChat) {
+  if (shouldAIPly) {
     setAiThinking(true);
-    const history = updated.map(m => ({
+    const history = [...messages, myMsg].map(m => ({
       role: m.sender_id === currentUserId ? 'user' : 'assistant',
       content: m.content
     }));
-
+    
     const aiText = await getAIResponse(history, isSeedSession ? 'expresser' : 'listener', post?.content);
     setAiThinking(false);
 
@@ -1328,16 +1281,14 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       await new Promise(r => setTimeout(r, 2000));
       setOtherTyping(false);
 
-      const { data: aiInserted } = await supabase
-        .from('messages')
-        .insert({
-          session_id: activeSessionId,
-          sender_id: '00000000-0000-0000-0000-000000000001',
-          content: aiText,
-          is_ai_msg: true
+      const { data: aiInserted } = await supabase.from('messages')
+        .insert({ 
+          session_id: activeSessionId, 
+          sender_id: '00000000-0000-0000-0000-000000000001', 
+          content: aiText, 
+          is_ai_msg: true 
         })
-        .select()
-        .single();
+        .select().single();
 
       if (aiInserted) setMessages(prev => [...prev, aiInserted]);
     }
