@@ -682,34 +682,100 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
 }
 
  async function handleSelectPost(post) {
+
   if (todayListenerCount >= DAILY_LISTEN_LIMIT) { setShowBurnoutBlock(true); return }
+
+
+
+  // Clean the ID for database compatibility
 
   const cleanId = post.id.toString().replace('seed-', '');
 
-  // 1. ALWAYS check for existing session first
+
+
+  // 1. Check for existing session first
+
   const { data: existing } = await supabase
+
     .from('sessions')
+
     .select('*')
+
     .eq('post_id', cleanId)
+
     .eq('listener_id', user.id)
+
     .maybeSingle();
 
+
+
   if (existing) {
+
+    // If it exists, we just open it.
+
+    // To hide it from the feed, ensure your 'posts' filter checks 'existing sessions'
+
     setActiveSession({ ...existing, post: { ...post, id: cleanId }, is_seed: post.is_seed });
+
     return;
+
   }
 
-  // 2. NEW LOGIC: Both Seeds and Humans start as "Pending"
-  // This prevents them from appearing in "Your Conversations" until a message is sent.
-  setActiveSession({ 
-    id: 'pending', 
-    post: { ...post, id: cleanId }, 
-    is_seed: post.is_seed || post.id.toString().includes('seed-'),
-    isPending: true 
-  });
-  
+
+
+  // 2. Handle Seed Posts
+
+  if (post.is_seed || post.id.toString().includes('seed-')) {
+
+    const { data: newSession, error } = await supabase
+
+      .from('sessions')
+
+      .insert({
+
+        post_id: cleanId,
+
+        expresser_id: '00000000-0000-0000-0000-000000000001',
+
+        listener_id: user.id,
+
+        status: 'active'
+
+      })
+
+      .select().single();
+
+
+
+    if (newSession) {
+
+      setActiveSession({ ...newSession, post: { ...post, id: cleanId }, is_seed: true });
+
+    } else {
+
+      // Fallback to let the chat open even if DB insert fails
+
+      setActiveSession({ id: cleanId, post: { ...post, id: cleanId }, is_seed: true });
+
+    }
+
+    setShowEndTip(true);
+
+    return;
+
+  }
+
+
+
+  // 3. Handle Human Posts
+
+  setActiveSession({ id: null, post: { ...post, id: cleanId }, isPending: true });
+
   setShowEndTip(true);
+
 }
+
+
 
   if (showBurnoutBlock) {
     return (
