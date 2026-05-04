@@ -645,9 +645,27 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   }, [todayListenerCount])
 
   async function fetchPosts() {
-    const { data } = await supabase.from('posts').select('*, profiles(full_name, avatar_url)').eq('status', 'open').neq('user_id', user.id).order('created_at', { ascending: false })
-    setPosts([...(data || []), ...SEED_POSTS]); setLoading(false)
+  const { data, error } = await supabase
+    .from('posts')
+    .select('*, profiles(full_name, avatar_url)')
+    .eq('status', 'open')
+    .neq('user_id', user.id)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error("Error fetching posts:", error);
   }
+
+  // 1. Filter out DB posts that already exist in your local SEED_POSTS list
+  const uniqueDbPosts = (data || []).filter(dbPost => 
+    !SEED_POSTS.some(seed => seed.id === dbPost.id)
+  );
+
+  // 2. Combine them: Local SEED_POSTS first (for speed), then unique DB posts
+  setPosts([...SEED_POSTS, ...uniqueDbPosts]);
+  
+  setLoading(false);
+}
 
   async function handleSelectPost(post) {
   if (todayListenerCount >= DAILY_LISTEN_LIMIT) { setShowBurnoutBlock(true); return }
