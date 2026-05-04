@@ -899,16 +899,20 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
 
   // Filter to only include sessions that have at least one message
 // This prevents empty sessions from appearing in "Your conversations"
-const myExpressions = chats.filter(c => 
-  c.expresser_id === userId && 
-  (c.messages?.length > 0 || c.has_messages === true)
-)
+// Filter: Only show if there is a last message text OR a messages array
+const myExpressions = chats.filter(c => {
+  const isOwner = c.expresser_id === userId;
+  const hasContent = c.last_message || (c.messages && c.messages.length > 0);
+  console.log("Debug Chats Sample:", chats[0]);
+  return isOwner && hasContent;
+});
 
-const myListening = chats.filter(c => 
-  c.listener_id === userId && 
-  (c.messages?.length > 0 || c.has_messages === true)
-)
-
+const myListening = chats.filter(c => {
+  const isListener = c.listener_id === userId;
+  const hasContent = c.last_message || (c.messages && c.messages.length > 0);
+  console.log("Debug Chats Sample:", chats[0]);
+  return isListener && hasContent;
+});
   // Group expressions by post
   const expressionGroups = Object.values(
     myExpressions.reduce((acc, chat) => {
