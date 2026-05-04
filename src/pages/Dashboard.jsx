@@ -1023,20 +1023,20 @@ const isOngoing = chat.status === 'active';
 const preview = chat.posts?.content?.slice(0, 100) ?? '';
 const isAnon = chat.posts?.is_anonymous;
 
-// 1. IMPROVED SEED LOOKUP:
-// We look for the seed by checking the ID in the attached post object.
-// We use optional chaining (?.) to prevent the "Blank Screen" crash if a post is null.
+// 1. Look for seed info, but handle cases where chat.posts might be null
+const postId = chat.post_id || chat.posts?.id;
 const seedRecord = SEED_POSTS.find(s => 
-  s.id.toString().includes(chat.post_id?.toString() || chat.posts?.id?.toString())
+  s.id.toString().includes(postId?.toString() || "")
 );
 
-// 2. SAFE NAMING:
+// 2. SAFE NAMING: Use ?. to prevent the "full_name" of null error
+// This line was likely causing your crash
 const otherName = seedRecord 
-  ? seedRecord.profiles.full_name.split(' ')[0] 
+  ? seedRecord.profiles?.full_name?.split(' ')[0] 
   : (isAnon ? 'Anonymous' : (chat.otherProfile?.full_name?.split(' ')[0] ?? 'Someone'));
 
 const otherAvatar = seedRecord 
-  ? seedRecord.profiles.avatar_url 
+  ? seedRecord.profiles?.avatar_url 
   : (isAnon ? null : chat.otherProfile?.avatar_url);
 return (
   <div key={`listen-${chat.id}`} style={{ padding: '14px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
