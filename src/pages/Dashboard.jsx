@@ -900,18 +900,20 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
   // Filter to only include sessions that have at least one message
 // This prevents empty sessions from appearing in "Your conversations"
 // Filter: Only show if there is a last message text OR a messages array
-const myExpressions = chats.filter(c => {
-  const isOwner = c.expresser_id === userId;
-  const hasContent = c.last_message || (c.messages && c.messages.length > 0);
-  console.log("Debug Chats Sample:", chats[0]);
-  return isOwner && hasContent;
-});
+// 1. Show ALL of your own posts/expressions regardless of message count
+const myExpressions = chats.filter(c => c.expresser_id === userId);
 
+// 2. Only show chats you are listening to if they have a 'last_message' 
+// OR if they aren't brand new "empty" sessions.
 const myListening = chats.filter(c => {
   const isListener = c.listener_id === userId;
-  const hasContent = c.last_message || (c.messages && c.messages.length > 0);
-  console.log("Debug Chats Sample:", chats[0]);
-  return isListener && hasContent;
+  
+  // If the chat has any message property at all, show it.
+  // Otherwise, we only hide it if it's a 'listener' session with NO data.
+  const hasSignOfLife = !!c.last_message || !!c.messages?.length || !!c.latest_message;
+
+  // Change this to true if you'd rather see everything while debugging
+  return isListener && hasSignOfLife;
 });
   // Group expressions by post
   const expressionGroups = Object.values(
