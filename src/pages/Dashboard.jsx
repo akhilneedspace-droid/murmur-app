@@ -898,23 +898,34 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
   const BUCKET_ORDER = ['Today', 'Yesterday', 'This week', 'This month', 'Earlier']
 
   // Filter to only include sessions that have at least one message
-// This prevents empty sessions from appearing in "Your conversations"
-// Filter: Only show if there is a last message text OR a messages array
-// 1. Show ALL of your own posts/expressions regardless of message count
+// 1. Show all of your own posts
 const myExpressions = chats.filter(c => c.expresser_id === userId);
 
-// 2. Only show chats you are listening to if they have a 'last_message' 
-// OR if they aren't brand new "empty" sessions.
+// 2. Filter and log listening chats
 const myListening = chats.filter(c => {
   const isListener = c.listener_id === userId;
   
-  // If the chat has any message property at all, show it.
-  // Otherwise, we only hide it if it's a 'listener' session with NO data.
-  const hasSignOfLife = !!c.last_message || !!c.messages?.length || !!c.latest_message;
+  // LOGGING: This will show you exactly what is inside your chat objects in the browser console
+  if (isListener) {
+    console.log("Checking Listening Chat:", {
+      id: c.id,
+      post_id: c.post_id,
+      status: c.status,
+      hasMessagesArray: !!(c.messages && c.messages.length > 0),
+      hasLastMessage: !!c.last_message,
+      fullObject: c
+    });
+  }
 
-  // Change this to true if you'd rather see everything while debugging
-  return isListener && hasSignOfLife;
+  const isSeed = !!SEED_POSTS.find(s => s.id.toString() === c.post_id?.toString());
+  const hasMessages = (c.messages && c.messages.length > 0) || !!c.last_message || !!c.latest_message;
+  
+  // This return determines if the chat shows up
+  return isListener && (isSeed || hasMessages || c.status === 'active');
 });
+
+// Final tally log
+console.log(`Filter Results: ${myExpressions.length} expressions, ${myListening.length} listening found.`);
   // Group expressions by post
   const expressionGroups = Object.values(
     myExpressions.reduce((acc, chat) => {
