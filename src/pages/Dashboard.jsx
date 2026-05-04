@@ -1018,22 +1018,26 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
                   }
 
                   // Listening card
-const chat = row.data
-const isOngoing = chat.status === 'active'
-const preview = chat.posts?.content?.slice(0, 100) ?? ''
-const isAnon = chat.posts?.is_anonymous
+const chat = row.data;
+const isOngoing = chat.status === 'active';
+const preview = chat.posts?.content?.slice(0, 100) ?? '';
+const isAnon = chat.posts?.is_anonymous;
 
-// SAFEST NAMING FIX: 
-// If it's an AI/Seed post, try to find the name in our local list first.
-const seedRecord = SEED_POSTS.find(s => s.id.toString().includes(chat.post_id?.toString()));
+// 1. IMPROVED SEED LOOKUP:
+// We look for the seed by checking the ID in the attached post object.
+// We use optional chaining (?.) to prevent the "Blank Screen" crash if a post is null.
+const seedRecord = SEED_POSTS.find(s => 
+  s.id.toString().includes(chat.post_id?.toString() || chat.posts?.id?.toString())
+);
 
+// 2. SAFE NAMING:
 const otherName = seedRecord 
   ? seedRecord.profiles.full_name.split(' ')[0] 
-  : (chat.posts?.is_anonymous ? 'Anonymous' : (chat.otherProfile?.full_name?.split(' ')[0] ?? 'Someone'));
+  : (isAnon ? 'Anonymous' : (chat.otherProfile?.full_name?.split(' ')[0] ?? 'Someone'));
 
 const otherAvatar = seedRecord 
   ? seedRecord.profiles.avatar_url 
-  : (chat.posts?.is_anonymous ? null : chat.otherProfile?.avatar_url);
+  : (isAnon ? null : chat.otherProfile?.avatar_url);
 return (
   <div key={`listen-${chat.id}`} style={{ padding: '14px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
     <button onClick={() => onOpen(chat)} style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
