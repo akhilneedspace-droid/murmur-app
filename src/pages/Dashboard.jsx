@@ -897,10 +897,17 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
 
   const BUCKET_ORDER = ['Today', 'Yesterday', 'This week', 'This month', 'Earlier']
 
-  // Flatten all chats into a unified list with role context
-  // For expresser chats: group sessions by post, show one row per post
-  const myExpressions = chats.filter(c => c.expresser_id === userId)
-  const myListening   = chats.filter(c => c.listener_id === userId)
+  // Filter to only include sessions that have at least one message
+// This prevents empty sessions from appearing in "Your conversations"
+const myExpressions = chats.filter(c => 
+  c.expresser_id === userId && 
+  (c.messages?.length > 0 || c.has_messages === true)
+)
+
+const myListening = chats.filter(c => 
+  c.listener_id === userId && 
+  (c.messages?.length > 0 || c.has_messages === true)
+)
 
   // Group expressions by post
   const expressionGroups = Object.values(
