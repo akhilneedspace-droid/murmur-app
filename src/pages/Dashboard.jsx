@@ -1194,7 +1194,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
       const msgs = data || []
       msgs.forEach(m => seenIds.current.add(m.id))
       // If any message is a system end-message, mark closed
-      if (msgs.some(m => m.content?.startsWith('__system__:'))) setSessionClosed(true)
+      //if (msgs.some(m => m.content?.startsWith('__system__:'))) setSessionClosed(true)
       setMessages(msgs)
       setHasInteracted(msgs.some(m => m.sender_id === currentUserId && !m.content?.startsWith('__system__:') && !m.is_ai_msg))
       setLoading(false)
@@ -1282,7 +1282,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
           // System messages appear immediately
           // Detect system messages by content prefix (avoids RLS issues with sender_id = system)
           if (msg.content?.startsWith('__system__:')) {
-            setSessionClosed(true)
+            //setSessionClosed(true)
             setMessages(m => m.find(x => x.id === msg.id) ? m : [...m, msg])
             return
           }
@@ -1472,16 +1472,30 @@ async function send() {
 
   function insertEmoji(e) { setInput(i => i + e); inputRef.current?.focus() }
 
-  const otherName = (() => {
-    if (isSeedSession) return post?.is_anonymous ? 'Anonymous' : (post?.profiles?.full_name?.split(' ')[0] ?? 'Someone')
-    if (post?.is_anonymous) return 'Anonymous'
-    return otherProfile?.full_name?.split(' ')[0] ?? (isExpresser ? 'Listener' : 'Someone')
-  })()
-  const otherAvatar = (() => {
-    if (isSeedSession) return post?.is_anonymous ? null : (post?.profiles?.avatar_url ?? null)
-    if (post?.is_anonymous) return null
-    return otherProfile?.avatar_url ?? null
-  })()
+  const seedRecord = SEED_POSTS.find(s => 
+  s.id.toString().includes(post?.id?.toString() || "")
+);
+
+const otherName = (() => {
+  // 1. If it's a seed post, prioritize the name from SEED_POSTS
+  if (seedRecord) return seedRecord.profiles.full_name.split(' ')[0];
+  
+  // 2. Fallbacks for real database posts
+  if (isSeedSession) return post?.is_anonymous ? 'Anonymous' : (post?.profiles?.full_name?.split(' ')[0] ?? 'Someone');
+  if (post?.is_anonymous) return 'Anonymous';
+  
+  // 3. Fallback for AI or Listeners
+  return otherProfile?.full_name?.split(' ')[0] ?? (isExpresser ? 'Listener' : 'Someone');
+})();
+
+const otherAvatar = (() => {
+  // 1. Prioritize seed avatar
+  if (seedRecord) return seedRecord.profiles.avatar_url;
+  
+  if (isSeedSession) return post?.is_anonymous ? null : (post?.profiles?.avatar_url ?? null);
+  if (post?.is_anonymous) return null;
+  return otherProfile?.avatar_url ?? null;
+})();
   const myName = myProfile?.full_name?.split(' ')[0] ?? 'You'
   const myAvatar = myProfile?.avatar_url ?? null
 
