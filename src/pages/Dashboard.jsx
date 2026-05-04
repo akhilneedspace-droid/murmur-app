@@ -644,26 +644,40 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
     return () => supabase.removeChannel(ch)
   }, [todayListenerCount])
 
-  async function fetchPosts() {
-  const { data, error } = await supabase
+ async function fetchPosts() {
+  setLoading(true);
+
+  // 1. Fetch the posts
+  const { data: allPosts } = await supabase
     .from('posts')
     .select('*, profiles(full_name, avatar_url)')
     .eq('status', 'open')
-    .neq('user_id', user.id)
-    .order('created_at', { ascending: false });
+    .neq('user_id', user.id);
 
-  if (error) {
-    console.error("Error fetching posts:", error);
-  }
+  // 2. Fetch YOUR existing sessions (to know who you've talked to)
+  const { data: mySessions } = await supabase
+    .from('sessions')
+    .select('post_id')
+    .eq('listener_id', user.id);
 
-  // 1. Filter out DB posts that already exist in your local SEED_POSTS list
-  const uniqueDbPosts = (data || []).filter(dbPost => 
-    !SEED_POSTS.some(seed => seed.id === dbPost.id)
+  // Create a list of IDs for posts you've already interacted with
+  const interactedPostIds = new Set(mySessions?.map(s => s.post_id.toString()) || []);
+
+  // 3. Filter SEED_POSTS: Keep only those you haven't talked to
+  const filteredSeeds = SEED_POSTS.filter(seed => 
+    !interactedPostIds.has(seed.id.toString().replace('seed-', ''))
   );
 
-  // 2. Combine them: Local SEED_POSTS first (for speed), then unique DB posts
-  setPosts([...SEED_POSTS, ...uniqueDbPosts]);
-  
+  // 4. Filter DB Posts: Keep only those not in seeds AND not interacted with
+  const filteredDbPosts = (allPosts || []).filter(dbPost => {
+    const cleanId = dbPost.id.toString();
+    const isSeed = SEED_POSTS.some(s => s.id === cleanId);
+    const alreadyInteracted = interactedPostIds.has(cleanId);
+    return !isSeed && !alreadyInteracted;
+  });
+
+  // 5. Combine and show
+  setPosts([...filteredSeeds, ...filteredDbPosts]);
   setLoading(false);
 }
 
