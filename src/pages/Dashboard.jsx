@@ -681,13 +681,12 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   setLoading(false);
 }
 
-  async function handleSelectPost(post) {
+ async function handleSelectPost(post) {
   if (todayListenerCount >= DAILY_LISTEN_LIMIT) { setShowBurnoutBlock(true); return }
 
-  // Clean the ID for database compatibility
   const cleanId = post.id.toString().replace('seed-', '');
 
-  // 1. Check for existing session first
+  // 1. ALWAYS check for existing session first
   const { data: existing } = await supabase
     .from('sessions')
     .select('*')
@@ -696,36 +695,19 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
     .maybeSingle();
 
   if (existing) {
-    // If it exists, we just open it. 
-    // To hide it from the feed, ensure your 'posts' filter checks 'existing sessions'
     setActiveSession({ ...existing, post: { ...post, id: cleanId }, is_seed: post.is_seed });
     return;
   }
 
-  // 2. Handle Seed Posts
-  if (post.is_seed || post.id.toString().includes('seed-')) {
-    const { data: newSession, error } = await supabase
-      .from('sessions')
-      .insert({
-        post_id: cleanId,
-        expresser_id: '00000000-0000-0000-0000-000000000001',
-        listener_id: user.id,
-        status: 'active'
-      })
-      .select().single();
-
-    if (newSession) {
-      setActiveSession({ ...newSession, post: { ...post, id: cleanId }, is_seed: true });
-    } else {
-      // Fallback to let the chat open even if DB insert fails
-      setActiveSession({ id: cleanId, post: { ...post, id: cleanId }, is_seed: true });
-    }
-    setShowEndTip(true);
-    return;
-  }
-
-  // 3. Handle Human Posts
-  setActiveSession({ id: null, post: { ...post, id: cleanId }, isPending: true });
+  // 2. NEW LOGIC: Both Seeds and Humans start as "Pending"
+  // This prevents them from appearing in "Your Conversations" until a message is sent.
+  setActiveSession({ 
+    id: 'pending', 
+    post: { ...post, id: cleanId }, 
+    is_seed: post.is_seed || post.id.toString().includes('seed-'),
+    isPending: true 
+  });
+  
   setShowEndTip(true);
 }
 
@@ -970,32 +952,48 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
                   }
 
                   // Listening card
-                  const chat = row.data
-                  const isOngoing = chat.status === 'active'
-                  const preview = chat.posts?.content?.slice(0, 100) ?? ''
-                  const isAnon = chat.posts?.is_anonymous
-                  const otherName = isAnon ? 'Anonymous' : (chat.otherProfile?.full_name?.split(' ')[0] ?? 'Someone')
-                  const otherAvatar = isAnon ? null : chat.otherProfile?.avatar_url
+const chat = row.data
+const isOngoing = chat.status === 'active'
+const preview = chat.posts?.content?.slice(0, 100) ?? ''
+const isAnon = chat.posts?.is_anonymous
 
-                  return (
-                    <div key={`listen-${chat.id}`} style={{ padding: '14px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                      <button onClick={() => onOpen(chat)} style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <Avatar url={otherAvatar} name={otherName} size={24} />
-                            <span style={{ fontSize: 13, color: 'rgba(240,239,232,0.8)', fontWeight: 500 }}>{otherName}</span>
-                            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--teal)' }}>You listened</span>
-                            <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, fontWeight: 600, background: isOngoing ? 'rgba(93,202,165,0.15)' : 'rgba(136,135,128,0.15)', color: isOngoing ? 'var(--teal)' : 'rgba(240,239,232,0.4)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                              {isOngoing ? 'Live' : 'Ended'}
-                            </span>
-                          </div>
-                        </div>
-                        <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.7)', lineHeight: 1.6 }}>"{preview}{preview.length === 100 ? '...' : ''}"</p>
-                        {chat.posts?.emotion_tag && <span style={{ display: 'inline-block', marginTop: 6, fontSize: 11, padding: '2px 8px', borderRadius: 6, background: 'var(--bg3)', color: 'var(--teal)' }}>{chat.posts.emotion_tag}</span>}
-                      </button>
-                      <button onClick={() => setConfirmDelete(chat.id)} style={{ color: 'rgba(240,239,232,0.25)', fontSize: 20, cursor: 'pointer', flexShrink: 0, padding: 4, background: 'none', border: 'none', lineHeight: 1 }}
-                        onMouseEnter={e => e.currentTarget.style.color = 'var(--coral)'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(240,239,232,0.25)'}>×</button>
-                    </div>
+// NEW: Look for the corresponding seed post in your local list to get the real name
+const seedInfo = SEED_POSTS.find(s => 
+  s.id.toString().replace('seed-', '') === chat.post_id?.toString()
+);
+
+// Updated naming logic: 
+// 1. Check if it's a seed post (Carlos, Priya, etc.)
+// 2. If not, check if it's anonymous
+// 3. Otherwise, use the database profile
+const otherName = seedInfo 
+  ? seedInfo.profiles.full_name.split(' ')[0] 
+  : (isAnon ? 'Anonymous' : (chat.otherProfile?.full_name?.split(' ')[0] ?? 'Someone'));
+
+const otherAvatar = seedInfo 
+  ? seedInfo.profiles.avatar_url 
+  : (isAnon ? null : chat.otherProfile?.avatar_url);
+
+return (
+  <div key={`listen-${chat.id}`} style={{ padding: '14px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+    <button onClick={() => onOpen(chat)} style={{ flex: 1, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Avatar url={otherAvatar} name={otherName} size={24} />
+          <span style={{ fontSize: 13, color: 'rgba(240,239,232,0.8)', fontWeight: 500 }}>{otherName}</span>
+          <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--teal)' }}>You listened</span>
+          <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, fontWeight: 600, background: isOngoing ? 'rgba(93,202,165,0.15)' : 'rgba(136,135,128,0.15)', color: isOngoing ? 'var(--teal)' : 'rgba(240,239,232,0.4)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+            {isOngoing ? 'Live' : 'Ended'}
+          </span>
+        </div>
+      </div>
+      <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.7)', lineHeight: 1.6 }}>"{preview}{preview.length === 100 ? '...' : ''}"</p>
+      {chat.posts?.emotion_tag && <span style={{ display: 'inline-block', marginTop: 6, fontSize: 11, padding: '2px 8px', borderRadius: 6, background: 'var(--bg3)', color: 'var(--teal)' }}>{chat.posts.emotion_tag}</span>}
+    </button>
+    <button onClick={() => setConfirmDelete(chat.id)} style={{ color: 'rgba(240,239,232,0.25)', fontSize: 20, cursor: 'pointer', flexShrink: 0, padding: 4, background: 'none', border: 'none', lineHeight: 1 }}
+      onMouseEnter={e => e.currentTarget.style.color = 'var(--coral)'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(240,239,232,0.25)'}>×</button>
+  </div>
+
                   )
                 })}
               </div>
