@@ -901,31 +901,20 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
 // 1. Show all of your own posts
 const myExpressions = chats.filter(c => c.expresser_id === userId);
 
-// 2. Filter and log listening chats
+// 2. Filter listening chats based on ACTUAL activity
 const myListening = chats.filter(c => {
   const isListener = c.listener_id === userId;
   
-  // LOGGING: This will show you exactly what is inside your chat objects in the browser console
-  if (isListener) {
-    console.log("Checking Listening Chat:", {
-      id: c.id,
-      post_id: c.post_id,
-      status: c.status,
-      hasMessagesArray: !!(c.messages && c.messages.length > 0),
-      hasLastMessage: !!c.last_message,
-      fullObject: c
-    });
-  }
-
-  const isSeed = !!SEED_POSTS.find(s => s.id.toString() === c.post_id?.toString());
-  const hasMessages = (c.messages && c.messages.length > 0) || !!c.last_message || !!c.latest_message;
+  // A session only has "real" history if the activity timestamp 
+  // has moved past the creation timestamp, OR if it has a status of 'active'.
+  const hasInteraction = c.last_activity !== c.created_at || c.status === 'active';
   
-  // This return determines if the chat shows up
-  return isListener && (isSeed || hasMessages || c.status === 'active');
-});
+  // Special case: Seeds like Jordan/AI should show if they aren't 'closed' 
+  // or if they have had an interaction.
+  const isAiSeed = c.is_ai_seed === true;
 
-// Final tally log
-console.log(`Filter Results: ${myExpressions.length} expressions, ${myListening.length} listening found.`);
+  return isListener && (hasInteraction || isAiSeed);
+});
   // Group expressions by post
   const expressionGroups = Object.values(
     myExpressions.reduce((acc, chat) => {
