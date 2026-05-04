@@ -1229,8 +1229,12 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
 
   function broadcastTyping() { typingChannel.current?.send({ type: 'broadcast', event: 'typing', payload: { user_id: currentUserId } }) }
 
- async function send() {
-  if (!input.trim() || aiThinking) return;
+async function send() {
+  if (!input.trim() || aiThinking) {
+    console.log("Send blocked: input empty or AI already thinking");
+    return;
+  }
+  
   const content = input.trim();
   setInput('');
   setHasInteracted(true);
@@ -1241,56 +1245,104 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
   setMessages(prev => [...prev, myMsg]);
 
   let activeSessionId = sessionId;
+  console.log("Starting send. Current sessionId state:", activeSessionId);
 
-  // Force session creation if it doesn't exist yet
-  if ((!activeSessionId || activeSessionId === 'pending') && post) {
+  // 1. ENSURE SESSION EXISTS (Fixes the 403/409 loop)
+  if ((!activeSessionId || activeSessionId === 'pending' || activeSessionId === post?.id) && post) {
     const cleanPostId = post.id.toString().replace('seed-', '');
-    const { data: newSession } = await supabase.from('sessions')
-      .insert({ 
-        post_id: cleanPostId, 
-        expresser_id: (isSeedSession || post.is_seed) ? '00000000-0000-0000-0000-000000000001' : post.user_id, 
-        listener_id: currentUserId, 
-        status: 'active' 
-      })
-      .select().single();
-    
-    if (newSession) {
-      activeSessionId = newSession.id;
+    console.log("No valid session ID. Attempting to fetch or create for post:", cleanPostId);
+
+    // Try to find existing first to avoid 409
+    const { data: existing } = await supabase
+      .from('sessions')
+      .select('id')
+      .eq('post_id', cleanPostId)
+      .eq('listener_id', currentUserId)
+      .maybeSingle();
+
+    if (existing) {
+      console.log("Existing session found:", existing.id);
+      activeSessionId = existing.id;
       setSessionId(activeSessionId);
+    } else {
+      console.log("No session found. Inserting new session...");
+      const { data: newS, error: sErr } = await supabase
+        .from('sessions')
+        .insert({ 
+          post_id: cleanPostId, 
+          expresser_id: (isSeedSession || post.is_seed) ? '00000000-0000-0000-0000-000000000001' : post.user_id, 
+          listener_id: currentUserId, 
+          status: 'active' 
+        })
+        .select().single();
+      
+      if (newS) {
+        activeSessionId = newS.id;
+        setSessionId(activeSessionId);
+        console.log("New session created:", activeSessionId);
+      } else {
+        console.error("Session creation failed (This causes the 403):", sErr);
+      }
     }
   }
 
-  // Save User Message
-  await supabase.from('messages').insert({ session_id: activeSessionId, sender_id: currentUserId, content });
+  // 2. SAVE USER MESSAGE
+  console.log("Saving user message to session:", activeSessionId);
+  const { data: inserted, error: mErr } = await supabase
+    .from('messages')
+    .insert({ session_id: activeSessionId, sender_id: currentUserId, content })
+    .select().single();
 
-  // AI TRIGGER: We check BOTH the state AND the post object directly
-  const shouldAIPly = isAIChat || post?.is_seed || (post?.id && post.id.toString().includes('00000000'));
+  if (mErr) {
+    console.error("Message save failed. AI will not trigger:", mErr);
+    return; // If we can't save the message, we stop here.
+  }
+  
+  if (inserted) {
+    setMessages(m => m.map(msg => msg.id === tempId ? { ...msg, id: inserted.id } : msg));
+  }
 
-  if (shouldAIPly) {
+  // 3. AI TRIGGER LOGIC
+  const reallyIsAIChat = isAIChat || post?.is_seed || post?.id?.toString().includes('00000000');
+  console.log("Checking AI Trigger. isAIChat:", reallyIsAIChat);
+
+  if (reallyIsAIChat) {
     setAiThinking(true);
+    console.log("Fetching AI response...");
+    
     const history = [...messages, myMsg].map(m => ({
       role: m.sender_id === currentUserId ? 'user' : 'assistant',
       content: m.content
     }));
     
-    const aiText = await getAIResponse(history, isSeedSession ? 'expresser' : 'listener', post?.content);
-    setAiThinking(false);
+    try {
+      const aiText = await getAIResponse(history, isSeedSession ? 'expresser' : 'listener', post?.content);
+      console.log("AI Response received:", aiText);
+      setAiThinking(false);
 
-    if (aiText) {
-      setOtherTyping(true);
-      await new Promise(r => setTimeout(r, 2000));
-      setOtherTyping(false);
+      if (aiText) {
+        setOtherTyping(true);
+        await new Promise(r => setTimeout(r, 2000));
+        setOtherTyping(false);
 
-      const { data: aiInserted } = await supabase.from('messages')
-        .insert({ 
-          session_id: activeSessionId, 
-          sender_id: '00000000-0000-0000-0000-000000000001', 
-          content: aiText, 
-          is_ai_msg: true 
-        })
-        .select().single();
+        const { data: aiInserted, error: aiErr } = await supabase.from('messages')
+          .insert({ 
+            session_id: activeSessionId, 
+            sender_id: '00000000-0000-0000-0000-000000000001', 
+            content: aiText, 
+            is_ai_msg: true 
+          })
+          .select().single();
 
-      if (aiInserted) setMessages(prev => [...prev, aiInserted]);
+        if (aiErr) console.error("Failed to save AI message:", aiErr);
+        if (aiInserted) {
+            console.log("AI message saved successfully.");
+            setMessages(prev => [...prev, aiInserted]);
+        }
+      }
+    } catch (err) {
+      console.error("Error in AI chain:", err);
+      setAiThinking(false);
     }
   }
 }
