@@ -1379,11 +1379,11 @@ async function send() {
     setMessages(m => m.map(msg => msg.id === tempId ? { ...msg, id: inserted.id } : msg));
   }
 
-  // Update last_activity whenever a human sends a message
+  /*// Update last_activity whenever a human sends a message
     await supabase
       .from('sessions')
       .update({ last_activity: new Date().toISOString() })
-      .eq('id', activeSessionId);
+      .eq('id', activeSessionId);*/
 
   // 3. AI TRIGGER LOGIC
   const reallyIsAIChat = isAIChat || post?.is_seed || post?.id?.toString().includes('00000000');
@@ -1422,11 +1422,11 @@ async function send() {
             console.log("AI message saved successfully.");
             setMessages(prev => [...prev, aiInserted]);
             // Update last_activity when AI responds so the chat stays "Active"
-            await supabase
+            /*await supabase
               .from('sessions')
               .update({ last_activity: new Date().toISOString() })
               .eq('id', activeSessionId);
-            // -------------------------
+            // -------------------------*/
         }
       }
     } catch (err) {
