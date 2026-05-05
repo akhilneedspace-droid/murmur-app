@@ -176,48 +176,55 @@ export default function Dashboard() {
   }
 
   async function fetchPastChats() {
-    const AI_EXPRESSER_ID = '00000000-0000-0000-0000-000000000001'
-    const { data: sessions } = await supabase
-      .from('sessions')
-      .select('*, posts(content, emotion_tag, is_anonymous, user_id, id)')
-      .or(`expresser_id.eq.${user.id},listener_id.eq.${user.id}`)
-      .order('created_at', { ascending: false })
+  const AI_EXPRESSER_ID = '00000000-0000-0000-0000-000000000001'
+  const { data: sessions } = await supabase
+    .from('sessions')
+    .select('*, posts(content, emotion_tag, is_anonymous, user_id, id)')
+    .or(`expresser_id.eq.${user.id},listener_id.eq.${user.id}`)
+    .order('last_activity', { ascending: false }) // Order by activity, not creation
 
-    if (!sessions) { setPastChats([]); return }
+  if (!sessions) { setPastChats([]); return }
 
-    const enriched = await Promise.all(
-  sessions.map(async (session) => {
-    // Check for your AI Expresser ID
-    if (session.expresser_id === '00000000-0000-0000-0000-000000000001') {
-      return { 
-        ...session, 
-        otherProfile: { full_name: 'AI Expresser', avatar_url: null }, 
-        is_ai_seed: true 
-      }
-    }
-        const otherId = session.expresser_id === user.id ? session.listener_id : session.expresser_id
-        let otherProfile = null
-        if (otherId && otherId !== AI_EXPRESSER_ID) {
-          const { data } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', otherId).single()
-          otherProfile = data ?? null
+  const enriched = await Promise.all(
+    sessions.map(async (session) => {
+      if (session.expresser_id === AI_EXPRESSER_ID) {
+        return { 
+          ...session, 
+          otherProfile: { full_name: 'AI Expresser', avatar_url: null }, 
+          is_ai_seed: true 
         }
-        return { ...session, otherProfile }
-      })
-    )
-
-    //setPastChats(enriched.filter(s => !s.deleted_by || !Array.isArray(s.deleted_by) || !s.deleted_by.includes(user.id))) chatgpt try
-    setPastChats(prev => {
-  const cleaned = enriched.filter(s =>
-    !s.deleted_by || !Array.isArray(s.deleted_by) || !s.deleted_by.includes(user.id)
+      }
+      const otherId = session.expresser_id === user.id ? session.listener_id : session.expresser_id
+      let otherProfile = null
+      if (otherId) {
+        const { data } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', otherId).single()
+        otherProfile = data ?? null
+      }
+      return { ...session, otherProfile }
+    })
   )
 
-  // keep existing seed chats
-  const existingIds = new Set(cleaned.map(c => c.id))
-  const merged = [...cleaned, ...prev.filter(c => c.is_seed && !existingIds.has(c.id))]
+  setPastChats(prev => {
+    const cleaned = enriched.filter(s => {
+      // 1. Basic deletion check
+      const isDeleted = s.deleted_by && Array.isArray(s.deleted_by) && s.deleted_by.includes(user.id);
+      if (isDeleted) return false;
 
-  return merged
-})
-  }
+      // 2. LISTENER LOGIC: Only show if they actually sent a message
+      // (last_activity > created_at) OR if the chat is still currently 'active'
+      if (s.listener_id === user.id) {
+        const hasInteracted = s.last_activity !== s.created_at;
+        return hasInteracted || s.status === 'active';
+      }
+
+      return true; // Always show for the Expresser
+    })
+
+    const existingIds = new Set(cleaned.map(c => c.id))
+    const merged = [...cleaned, ...prev.filter(c => c.is_seed && !existingIds.has(c.id))]
+    return merged
+  })
+}
 
   // Load seed chats from localStorage and add to pastChats
   function loadSeedChats() {
@@ -1379,11 +1386,13 @@ async function send() {
     setMessages(m => m.map(msg => msg.id === tempId ? { ...msg, id: inserted.id } : msg));
   }
 
-  /*// Update last_activity whenever a human sends a message
-    await supabase
-      .from('sessions')
-      .update({ last_activity: new Date().toISOString() })
-      .eq('id', activeSessionId);*/
+  // FORCE UPDATE the last_activity to the current time
+  const { error: updateErr } = await supabase
+    .from('sessions')
+    .update({ last_activity: new Date().toISOString() })
+    .eq('id', activeSessionId);
+
+    if (updateErr) console.error("Activity sync failed:", updateErr);
 
   // 3. AI TRIGGER LOGIC
   const reallyIsAIChat = isAIChat || post?.is_seed || post?.id?.toString().includes('00000000');
@@ -1422,11 +1431,11 @@ async function send() {
             console.log("AI message saved successfully.");
             setMessages(prev => [...prev, aiInserted]);
             // Update last_activity when AI responds so the chat stays "Active"
-            /*await supabase
+            await supabase
               .from('sessions')
               .update({ last_activity: new Date().toISOString() })
               .eq('id', activeSessionId);
-            // -------------------------*/
+            // -------------------------
         }
       }
     } catch (err) {
