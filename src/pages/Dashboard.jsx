@@ -682,101 +682,69 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
 }
 
  async function handleSelectPost(post) {
+  // 1. Check for burnout/daily limits first
+  if (todayListenerCount >= DAILY_LISTEN_LIMIT) { 
+    setShowBurnoutBlock(true); 
+    return; 
+  }
 
-  if (todayListenerCount >= DAILY_LISTEN_LIMIT) { setShowBurnoutBlock(true); return }
-
-
-
-  // Clean the ID for database compatibility
-
+  // 2. Clean the ID for database compatibility (removes "seed-" prefix if present)
   const cleanId = post.id.toString().replace('seed-', '');
 
-
-
-  // 1. Check for existing session first
-
+  // 3. Check for an existing session to avoid duplicates
   const { data: existing } = await supabase
-
     .from('sessions')
-
     .select('*')
-
     .eq('post_id', cleanId)
-
     .eq('listener_id', user.id)
-
     .maybeSingle();
 
-
-
   if (existing) {
-
-    // If it exists, we just open it.
-
-    // To hide it from the feed, ensure your 'posts' filter checks 'existing sessions'
-
-    setActiveSession({ ...existing, post: { ...post, id: cleanId }, is_seed: post.is_seed });
-
+    // If it exists, open the existing session directly
+    setActiveSession({ 
+      ...existing, 
+      post: { ...post, id: cleanId }, 
+      is_seed: post.is_seed || post.id.toString().includes('seed-') 
+    });
     return;
-
   }
 
-
-
-  // 2. Handle Seed Posts
-
+  // 4. Handle Seed/AI Posts
   if (post.is_seed || post.id.toString().includes('seed-')) {
-
     const { data: newSession, error } = await supabase
-
       .from('sessions')
-
       .insert({
-
         post_id: cleanId,
-
-        expresser_id: '00000000-0000-0000-0000-000000000001',
-
+        // Using the static AI Expresser UUID
+        expresser_id: '00000000-0000-0000-0000-000000000001', 
         listener_id: user.id,
-
-        status: 'active'
-
+        status: 'active',
+        // last_activity matches created_at initially
+        last_activity: new Date().toISOString() 
       })
-
       .select().single();
 
-
-
     if (newSession) {
-
       setActiveSession({ ...newSession, post: { ...post, id: cleanId }, is_seed: true });
-
     } else {
-
-      // Fallback to let the chat open even if DB insert fails
-
+      // Fallback: Open the chat locally even if the DB insert fails temporarily
       setActiveSession({ id: cleanId, post: { ...post, id: cleanId }, is_seed: true });
-
     }
-
     setShowEndTip(true);
-
     return;
-
   }
 
-
-
-  // 3. Handle Human Posts
-
-  setActiveSession({ id: null, post: { ...post, id: cleanId }, isPending: true });
-
+  // 5. Handle Real Human Posts
+  // We mark it as 'isPending' so the UI knows to create the session 
+  // only after the listener actually sends their first message.
+  setActiveSession({ 
+    id: null, 
+    post: { ...post, id: cleanId }, 
+    isPending: true 
+  });
+  
   setShowEndTip(true);
-
 }
-
-
-
   if (showBurnoutBlock) {
     return (
       <div className="page" style={{ padding: '0 28px', justifyContent: 'center', alignItems: 'center', gap: 20, textAlign: 'center' }}>
@@ -899,21 +867,23 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
 
   // Filter to only include sessions that have at least one message
 // 1. Show all of your own posts
-const myExpressions = chats.filter(c => c.expresser_id === userId);
-
-// 2. Filter listening chats based on ACTUAL activity
 const myListening = chats.filter(c => {
   const isListener = c.listener_id === userId;
   
-  // A session only has "real" history if the activity timestamp 
-  // has moved past the creation timestamp, OR if it has a status of 'active'.
-  const hasInteraction = c.last_activity !== c.created_at || c.status === 'active';
-  
-  // Special case: Seeds like Jordan/AI should show if they aren't 'closed' 
-  // or if they have had an interaction.
-  const isAiSeed = c.is_ai_seed === true;
+  // LOGIC:
+  // 1. If it's a seed chat from localStorage, it already passed the 'msgs.length > 0' test in loadSeedChats.
+  if (c.is_seed) return isListener;
 
-  return isListener && (hasInteraction || isAiSeed);
+  // 2. For DB sessions:
+  // If the status is 'active', the user is currently in the chat, so show it.
+  if (c.status === 'active') return isListener;
+
+  // 3. For closed sessions: 
+  // ONLY show if last_activity is different from created_at.
+  // This is the definitive proof that at least one message was sent.
+  const hasInteracted = c.last_activity !== c.created_at;
+  
+  return isListener && hasInteracted;
 });
   // Group expressions by post
   const expressionGroups = Object.values(
@@ -1409,6 +1379,12 @@ async function send() {
     setMessages(m => m.map(msg => msg.id === tempId ? { ...msg, id: inserted.id } : msg));
   }
 
+  // Update last_activity whenever a human sends a message
+    await supabase
+      .from('sessions')
+      .update({ last_activity: new Date().toISOString() })
+      .eq('id', activeSessionId);
+
   // 3. AI TRIGGER LOGIC
   const reallyIsAIChat = isAIChat || post?.is_seed || post?.id?.toString().includes('00000000');
   console.log("Checking AI Trigger. isAIChat:", reallyIsAIChat);
@@ -1445,6 +1421,12 @@ async function send() {
         if (aiInserted) {
             console.log("AI message saved successfully.");
             setMessages(prev => [...prev, aiInserted]);
+            // Update last_activity when AI responds so the chat stays "Active"
+            await supabase
+              .from('sessions')
+              .update({ last_activity: new Date().toISOString() })
+              .eq('id', activeSessionId);
+            // -------------------------
         }
       }
     } catch (err) {
