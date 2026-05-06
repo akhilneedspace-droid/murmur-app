@@ -213,7 +213,8 @@ export default function Dashboard() {
         ...session, 
         otherProfile, 
         is_ai_seed, 
-        userMsgCount: count || 0 
+        userMsgCount: count || 0,
+        content: session.posts?.content
       }
     })
   )
@@ -1426,6 +1427,14 @@ async function send() {
     }));
     
     try {
+      // FIX: We look for content in two places to be safe
+    const contextText = post?.content || session?.content || ""; 
+    
+    // FIX: Explicitly check if the AI is meant to be the expresser
+    const aiRole = (isSeedSession || post?.expresser_id === '00000000-0000-0000-0000-000000000001') 
+      ? 'expresser' 
+      : 'listener';
+      
       const aiText = await getAIResponse(history, isSeedSession ? 'expresser' : 'listener', post?.content);
       console.log("AI Response received:", aiText);
       setAiThinking(false);
