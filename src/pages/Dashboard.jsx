@@ -10,7 +10,7 @@ function getGreeting() {
   const h = new Date().getHours()
   if (h >= 23 || h < 4)  return 'Still Awake, All okay?'
   if (h >= 4  && h < 12) return 'Good Morning'
-  if (h >= 12 && h < 16) return 'Good Aftrnoon'
+  if (h >= 12 && h < 16) return 'Good Afternoon'
   if (h >= 16 && h < 18) return 'Good Evening'
   if (h >= 18 && h < 20) return 'Hope your evening is going great!'
   return "Don't forget to sleep on time. Good Night! "
@@ -151,8 +151,69 @@ export default function Dashboard() {
   const [selectedChat, setSelectedChat] = useState(null)
   const [pendingListenerSession, setPendingListenerSession] = useState(null)
   const [showResumeModal, setShowResumeModal] = useState(false)
+  const [pendingPostId, setPendingPostId] = useState(null);
+const [showIncomingPopup, setShowIncomingPopup] = useState(false);
+const [newSessionId, setNewSessionId] = useState(null);
 
   useEffect(() => { setTimeout(() => setVisible(true), 100) }, [])
+
+  //newchange
+  
+const [globalNotification, setGlobalNotification] = useState({ show: false, title: '', buttonText: '', onAction: null });
+
+useEffect(() => {
+  if (!pendingPostId) return;
+
+  // 1. Start the 15-second AI timer
+  const aiTimer = setTimeout(async () => {
+    // Check if someone already joined to avoid double sessions
+    const { data: existing } = await supabase
+      .from('sessions')
+      .select('id')
+      .eq('post_id', pendingPostId)
+      .maybeSingle();
+
+    if (!existing) {
+      const { data: aiSession } = await supabase
+        .from('sessions')
+        .insert({
+          post_id: pendingPostId,
+          expresser_id: user.id,
+          listener_id: '00000000-0000-0000-0000-000000000001',
+          status: 'active'
+        })
+        .select().single();
+      
+      // If user is currently browsing, trigger the popup
+      if (view === 'listenerStories' && aiSession) {
+        setNewSessionId(aiSession.id);
+        setShowIncomingPopup(true);
+      }
+    }
+  }, 15000);
+
+  // 2. Realtime listener in case a HUMAN joins while you browse
+  const channel = supabase
+    .channel('awaiting-listener')
+    .on('postgres_changes', { 
+      event: 'INSERT', 
+      schema: 'public', 
+      table: 'sessions',
+      filter: `expresser_id=eq.${user.id}` 
+    }, (payload) => {
+      if (view === 'listenerStories') {
+        setNewSessionId(payload.new.id);
+        setShowIncomingPopup(true);
+      }
+    })
+    .subscribe();
+
+  return () => {
+    clearTimeout(aiTimer);
+    supabase.removeChannel(channel);
+  };
+}, [pendingPostId, view]);
+
 
   useEffect(() => {
     if (!user) return
@@ -521,6 +582,8 @@ function ExpresserView({ user, myProfile, onBack, onBrowseListeners, onSessionSt
       const { data, error: e } = await supabase.from('posts').insert({ user_id: user.id, content: text.trim(), emotion_tag: tag, is_anonymous: anonymous, status: 'open' }).select().single()
       if (e) throw e
       setPostId(data.id); setPostContent(text.trim()); setPhase('acknowledge')
+      // Add this line to update the parent's state
+      setPendingPostId(data.id);
       onPostCreated?.({ id: data.id, content: text.trim(), emotion_tag: tag, is_anonymous: anonymous, user_id: user.id })
     } catch (err) { setError(err.message) } finally { setLoading(false) }
   }
@@ -1427,15 +1490,20 @@ async function send() {
     }));
     
     try {
-      // FIX: We look for content in two places to be safe
-    const contextText = post?.content || session?.content || ""; 
-    
-    // FIX: Explicitly check if the AI is meant to be the expresser
-    const aiRole = (isSeedSession || post?.expresser_id === '00000000-0000-0000-0000-000000000001') 
-      ? 'expresser' 
-      : 'listener';
 
-      const aiText = await getAIResponse(history, isSeedSession ? 'expresser' : 'listener', post?.content);
+ // 1. Prepare Context & Identity
+      const contextText = post?.content || session?.content || ""; 
+      const AI_ID = '00000000-0000-0000-0000-000000000001';
+      
+      // Determine role by checking if the AI is the expresser of this post/session
+      const aiRole = (post?.expresser_id === AI_ID || session?.expresser_id === AI_ID || isSeedSession) 
+        ? 'expresser' 
+        : 'listener';
+
+      console.log("AI Identity Check:", { aiRole, hasContext: !!contextText });
+
+      // 2. Get Response (ONLY ONE CALL HERE)
+      const aiText = await getAIResponse(history, aiRole, contextText);
       console.log("AI Response received:", aiText);
       setAiThinking(false);
 
@@ -1648,6 +1716,36 @@ const otherAvatar = (() => {
     </>
   )
 }
+
+{showIncomingPopup && (
+  <div style={{
+    position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px'
+  }}>
+    <div style={{
+      backgroundColor: '#1c1c1e', padding: '24px', borderRadius: '20px',
+      maxWidth: '320px', width: '100%', textAlign: 'center', border: '1px solid #333'
+    }}>
+      <h2 style={{ color: 'white', fontSize: '20px', marginBottom: '8px' }}>Someone is here for you</h2>
+      <p style={{ color: '#999', marginBottom: '24px', fontSize: '15px' }}>A listener is ready to hear more about your thoughts.</p>
+      <button 
+        onClick={() => {
+          setShowIncomingPopup(false);
+          setPendingPostId(null);
+          // Logic to open the chat with this specific session
+          handleSelectSession(newSessionId); 
+          setView('chat');
+        }}
+        style={{
+          backgroundColor: '#007AFF', color: 'white', width: '100%',
+          padding: '14px', borderRadius: '12px', border: 'none', fontWeight: '600'
+        }}
+      >
+        Check their msg
+      </button>
+    </div>
+  </div>
+)}
 
 // Floating chat FAB rendered via portal
 function ListenerFAB({ sessions, currentSessionId, onSwitch }) {
