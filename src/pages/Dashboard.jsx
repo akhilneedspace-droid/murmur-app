@@ -8,12 +8,12 @@ import { getAIResponse } from '../lib/ai'
 // ── Greeting ───────────────────────────────────────────────────
 function getGreeting() {
   const h = new Date().getHours()
-  if (h >= 23 || h < 4)  return 'Still '
-  if (h >= 4  && h < 12) return 'Good Mor'
-  if (h >= 12 && h < 16) return 'Good af'
-  if (h >= 16 && h < 18) return 'Good e'
+  if (h >= 23 || h < 4)  return 'Still Awake, All okay?'
+  if (h >= 4  && h < 12) return 'Good Morning'
+  if (h >= 12 && h < 16) return 'Good Aftrnoon'
+  if (h >= 16 && h < 18) return 'Good Evening'
   if (h >= 18 && h < 20) return 'Hope your evening is going great!'
-  return "Don't forget to sleep on time. Good "
+  return "Don't forget to sleep on time. Good Night! "
 }
 
 // ── Stars ──────────────────────────────────────────────────────
@@ -1434,7 +1434,7 @@ async function send() {
     const aiRole = (isSeedSession || post?.expresser_id === '00000000-0000-0000-0000-000000000001') 
       ? 'expresser' 
       : 'listener';
-      
+
       const aiText = await getAIResponse(history, isSeedSession ? 'expresser' : 'listener', post?.content);
       console.log("AI Response received:", aiText);
       setAiThinking(false);
