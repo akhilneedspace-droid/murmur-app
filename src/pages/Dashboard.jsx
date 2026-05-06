@@ -30,20 +30,20 @@ function ListenerStars({ count }) {
   const filled = getFilledStars(count)
 
   // One label per tier, no contradictions
-  const title = filled === 3 ? "You're a Rockstar "
-               : filled === 2 ? "You're a Superstar "
-               : "You're a Star "
+  const title = filled === 3 ? "You're a Rockstar 💫"
+               : filled === 2 ? "You're a Superstar 🌟"
+               : "You're a Star ✨ "
 
   // Progress toward next tier, or max message
   const progress = count < 4  ? `${4 - count} more listen${4 - count === 1 ? '' : 's'} to reach Superstar`
                  : count < 10 ? `${10 - count} more listen${10 - count === 1 ? '' : 's'} to reach Rockstar`
-                 : 'You are at the top — thank you '
+                 : 'You are at the top — thank you 🏆'
 
   return (
     <div onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
       style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginTop: 4, cursor: 'default', position: 'relative' }}>
       {[0, 1, 2].map(i => (
-        <span key={i} style={{ fontSize: 15, opacity: i < filled ? 1 : 0.2, filter: i < filled ? 'none' : 'grayscale(1)', transition: 'opacity 0.2s' }}> </span>
+        <span key={i} style={{ fontSize: 15, opacity: i < filled ? 1 : 0.2, filter: i < filled ? 'none' : 'grayscale(1)', transition: 'opacity 0.2s' }}> ⭐</span>
       ))}
       {hovered && (
         <div style={{ position: 'absolute', left: 0, top: '130%', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 14px', whiteSpace: 'nowrap', fontSize: 12, color: 'var(--teal)', zIndex: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -78,9 +78,9 @@ function clearJournalQueue(postId) {
   try { sessionStorage.removeItem(`jq_${postId}`) } catch {}
 }
 const EMOJI_GROUPS = [
-  [' ',' ',' ',' ',' ',' ',' ',' ',' ',' '],
-  [' ',' ',' ',' ',' ',' ',' ',' ',' ',' '],
-  [' ',' ',' ',' ',' ',' ',' ',' ',' ',' '],
+  ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','💔','💗'],
+  ['😊','😢','😔','😰','😤','😌','🥺','😶','🤗','😓'],
+  ['🙏','💪','🤝','👋','✨','🌱','🌊','🌙','☀️','🕊️'],
 ]
 
 // ── Portal Modal ───────────────────────────────────────────────
@@ -109,7 +109,7 @@ function Avatar({ url, name, size = 36, style: extra = {} }) {
 
 function RatingScreen({ onSubmit, onSkip }) {
   const [selected, setSelected] = useState(null)
-  const OPTIONS = [{ value: 1, emoji: ' ', label: 'Not great' }, { value: 2, emoji: ' ', label: 'It helped' }, { value: 3, emoji: ' ', label: 'Really needed that' }]
+const OPTIONS = [{ value: 1, emoji: '😔', label: 'Not great' }, { value: 2, emoji: '😊', label: 'It helped' }, { value: 3, emoji: '🤍', label: 'Really needed that' }]
   return (
     <div className="page" style={{ padding: '0 28px', justifyContent: 'center', alignItems: 'center', gap: 28, textAlign: 'center' }}>
       <div>
@@ -401,7 +401,7 @@ export default function Dashboard() {
       <div style={{ position: 'relative', zIndex: 1, paddingTop: 52, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28, opacity: visible ? 1 : 0, transition: 'opacity 0.5s ease' }}>
         <div>
           <p style={{ fontSize: 13, color: 'rgba(240,239,232,0.55)', marginBottom: 2 }}>{getGreeting()}</p>
-          <h2 style={{ fontSize: 22, fontWeight: 500, color: 'var(--text)' }}>Hey, {firstName} </h2>
+          <h2 style={{ fontSize: 22, fontWeight: 500, color: 'var(--text)' }}>Hey, {firstName} 👋</h2>
           <ListenerStars count={listenerCount} />
         </div>
         <button onClick={() => navigate('/account')} style={{ background: 'none', cursor: 'pointer', border: 'none', marginTop: 4 }}>
@@ -412,7 +412,7 @@ export default function Dashboard() {
       {/* Active listener sessions notification for expresser */}
       {activeExpresserSessions.length > 1 && (
         <div style={{ position: 'relative', zIndex: 1, marginBottom: 16, padding: '14px 18px', background: 'rgba(93,202,165,0.08)', border: '1px solid rgba(93,202,165,0.25)', borderRadius: 'var(--radius)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <p style={{ fontSize: 14, color: 'var(--teal)' }}> {activeExpresserSessions.length} people are here for you</p>
+          <p style={{ fontSize: 14, color: 'var(--teal)' }}> 💬{activeExpresserSessions.length} people are here for you</p>
           <button onClick={() => setCurrentListenerSession(activeExpresserSessions[0])} style={{ fontSize: 13, color: 'var(--teal)', textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer' }}>View chats</button>
         </div>
       )}
@@ -531,7 +531,7 @@ function ExpresserView({ user, myProfile, onBack, onBrowseListeners, onSessionSt
   if (rateLimited) {
     return (
       <div className="page" style={{ padding: '0 28px', justifyContent: 'center', alignItems: 'center', gap: 24, textAlign: 'center' }}>
-        <div style={{ fontSize: 48 }}> </div>
+        <div style={{ fontSize: 48 }}> 🌙 </div>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 400, color: 'var(--accent)' }}>You've shared a lot today.</h2>
         <p style={{ fontSize: 15, color: 'rgba(240,239,232,0.7)', lineHeight: 1.8, maxWidth: 300 }}>
           You've reached the limit of {DAILY_POST_LIMIT} posts for today. This isn't a punishment — it's a gentle reminder to rest. Your feelings will still be here tomorrow, and so will we.
@@ -545,7 +545,7 @@ function ExpresserView({ user, myProfile, onBack, onBrowseListeners, onSessionSt
     return (
       <div className="page" style={{ padding: '0 28px', justifyContent: 'center', alignItems: 'center', gap: 24, textAlign: 'center' }}>
         <div style={{ animation: 'fadeUp 0.6s ease both' }}>
-          <div style={{ fontSize: 52, marginBottom: 16, animation: 'float 3s ease-in-out infinite' }}> </div>
+          <div style={{ fontSize: 52, marginBottom: 16, animation: 'float 3s ease-in-out infinite' }}> 🤍</div>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(26px, 7vw, 34px)', fontWeight: 400, color: 'var(--accent)', letterSpacing: '-0.02em', marginBottom: 14 }}>Thank you for sharing.</h2>
           <p style={{ fontSize: 15, color: 'rgba(240,239,232,0.7)', lineHeight: 1.8, maxWidth: 300 }}>We know it wasn't easy to put your heart into words. Glad you shared it.</p>
         </div>
@@ -797,7 +797,7 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
   if (showBurnoutBlock) {
     return (
       <div className="page" style={{ padding: '0 28px', justifyContent: 'center', alignItems: 'center', gap: 20, textAlign: 'center' }}>
-        <div style={{ fontSize: 48 }}> </div>
+        <div style={{ fontSize: 48 }}> 🌿</div>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 28, fontWeight: 400, color: 'var(--teal)' }}>You've given a lot today.</h2>
         <p style={{ fontSize: 15, color: 'rgba(240,239,232,0.7)', lineHeight: 1.8, maxWidth: 300 }}>
           You've listened to {DAILY_LISTEN_LIMIT} people today — that's genuinely remarkable. Rest now. Your presence matters more when you're recharged. Come back tomorrow.
@@ -833,7 +833,7 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
       {/* Burnout nudge after 3 sessions */}
       {showBurnoutNudge && (
         <Modal
-          title="You've been showing up a lot today "
+          title="You've been showing up a lot today 💙 "
           body={`You've listened to ${todayListenerCount} people today. How are you doing? It's okay to rest — you can come back to this tomorrow.`}
           primaryLabel="I'm okay, keep going"
           primaryAction={() => setShowBurnoutNudge(false)}
@@ -998,7 +998,7 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
                         {sessions.length === 1 ? (
                           // Single listener: just an "Open" button
                           <button onClick={() => onOpen(sessions[0])} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                            <span style={{ fontSize: 12, color: 'rgba(240,239,232,0.5)' }}> 1 listener ·</span>
+                            <span style={{ fontSize: 12, color: 'rgba(240,239,232,0.5)' }}> 💬 1 listener ·</span>
                             <span style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'underline' }}>Open chat</span>
                             <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 6, background: sessions[0].status === 'active' ? 'rgba(93,202,165,0.15)' : 'rgba(136,135,128,0.15)', color: sessions[0].status === 'active' ? 'var(--teal)' : 'rgba(240,239,232,0.4)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
                               {sessions[0].status === 'active' ? 'Ongoing' : 'Ended'}
@@ -1009,7 +1009,7 @@ function PastChatsView({ chats, userId, onOpen, onDelete, onBack }) {
                         ) : (
                           // Multiple listeners: expandable list
                           <div>
-                            <p style={{ fontSize: 12, color: 'rgba(240,239,232,0.5)', marginBottom: 6 }}> {listenerCount} listeners responded</p>
+                            <p style={{ fontSize: 12, color: 'rgba(240,239,232,0.5)', marginBottom: 6 }}> 💬 {listenerCount} listeners responded</p>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                               {sessions.map((session, idx) => {
                                 const oName = session.otherProfile?.full_name?.split(' ')[0] ?? `Listener ${idx + 1}`
@@ -1533,7 +1533,7 @@ const otherAvatar = (() => {
   if (ended) {
     return (
       <div className="page" style={{ padding: '0 28px', justifyContent: 'center', alignItems: 'center', gap: 24, textAlign: 'center' }}>
-        <div style={{ fontSize: 52, animation: 'float 3s ease-in-out infinite' }}> </div>
+        <div style={{ fontSize: 52, animation: 'float 3s ease-in-out infinite' }}> ✨</div>
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(26px, 7vw, 32px)', fontWeight: 400, letterSpacing: '-0.02em', color: 'var(--teal)' }}>You showed up for {otherName}.</h2>
         <p style={{ fontSize: 15, color: 'rgba(240,239,232,0.7)', lineHeight: 1.8, maxWidth: 300 }}>Being truly present for someone is one of the most human things there is. Thank you for being that person today.</p>
         <button className="btn-primary" style={{ maxWidth: 300 }} onClick={onEnd}>Back to home</button>
@@ -1543,12 +1543,12 @@ const otherAvatar = (() => {
 
   return (
     <>
-      {showEndTip && !isExpresser && <Modal title="You've started listening " body="When your conversation feels complete, tap 'End' in the top right to close it with care." primaryLabel="Got it" primaryAction={onEndTipDismiss} />}
+      {showEndTip && !isExpresser && <Modal title="You've started listening 💙" body="When your conversation feels complete, tap 'End' in the top right to close it with care." primaryLabel="Got it" primaryAction={onEndTipDismiss} />}
 
       {/* New listener notification for expresser */}
       {newListenerNotif && isExpresser && (
         <Modal
-          title="Someone else is here for you "
+          title="Someone else is here for you 💙"
           body="Another person has seen your words and wants to be present with you. Would you like to connect with them too?"
           primaryLabel="Yes, see their message"
           primaryAction={() => onSwitchListener?.(newListenerNotif)}
@@ -1590,7 +1590,7 @@ const otherAvatar = (() => {
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           {!isExpresser && (
             <div style={{ textAlign: 'center', padding: '10px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 8 }}>
-              <p style={{ fontSize: 12, color: 'rgba(240,239,232,0.6)', lineHeight: 1.6 }}>Be present, not a problem-solver. Let them feel heard first. </p>
+              <p style={{ fontSize: 12, color: 'rgba(240,239,232,0.6)', lineHeight: 1.6 }}>Be present, not a problem solver. Let them feel heard first. 💙</p>
             </div>
           )}
           {loading && <div style={{ textAlign: 'center', padding: 20 }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--accent)', display: 'inline-block', animation: 'pulse 1.2s infinite' }} /></div>}
@@ -1635,7 +1635,7 @@ const otherAvatar = (() => {
         ) : (
           <div style={{ padding: '12px 16px 36px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'flex-end', flexShrink: 0, position: 'relative' }}>
             {showEmoji && <EmojiPicker onSelect={insertEmoji} onClose={() => setShowEmoji(false)} />}
-            <button onClick={() => setShowEmoji(s => !s)} style={{ width: 40, height: 40, borderRadius: '50%', background: showEmoji ? 'var(--accent-dim)' : 'transparent', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, fontSize: 18 }}> </button>
+            <button onClick={() => setShowEmoji(s => !s)} style={{ width: 40, height: 40, borderRadius: '50%', background: showEmoji ? 'var(--accent-dim)' : 'transparent', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, fontSize: 18 }}> 🙂 </button>
             <textarea ref={inputRef} value={input} onChange={e => { setInput(e.target.value); if (!isAIChat) broadcastTyping() }} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }} placeholder={isExpresser ? 'Say what you need to say...' : 'Say something kind...'} rows={1}
               style={{ flex: 1, padding: '12px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 20, fontSize: 15, color: 'var(--text)', resize: 'none', lineHeight: 1.5, transition: 'border-color var(--transition)' }}
               onFocus={e => e.target.style.borderColor = 'var(--accent)'} onBlur={e => e.target.style.borderColor = 'var(--border)'} />
