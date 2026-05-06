@@ -303,14 +303,14 @@ export default function Dashboard() {
   // Keep ref in sync with state (avoids stale closure in realtime listener)
   useEffect(() => { currentListenerSessionRef.current = currentListenerSession }, [currentListenerSession])
 
-  // Session timeout: close inactive sessions every 5 minutes
+  /* Session timeout: close inactive sessions every 5 minutes
   useEffect(() => {
     if (!user) return
     const iv = setInterval(async () => {
       await supabase.rpc('close_inactive_sessions')
     }, 5 * 60 * 1000)
     return () => clearInterval(iv)
-  }, [user])
+  }, [user])*/
 
   // If expresser got first session and no current chat, open it
   useEffect(() => {
