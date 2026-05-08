@@ -23,7 +23,7 @@ export default function Welcome() {
         position: 'relative', 
         zIndex: 1, 
         padding: '20px 28px 0', 
-        marginTop: '20vh', 
+        marginTop: '15vh', 
         opacity: visible ? 1 : 0, 
         transform: visible ? 'translateY(0)' : 'translateY(-12px)', 
         transition: 'opacity 0.6s ease, transform 0.6s ease',
