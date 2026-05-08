@@ -19,17 +19,30 @@ export default function Welcome() {
 
      
 
-      <div className="pill-container" style={{ position: 'relative', zIndex: 1, padding: '52px 28px 0', marginTop: '20vh', opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(-12px)', transition: 'opacity 0.6s ease, transform 0.6s ease' }}>
-         <img 
-          src="/logo-Murmur.svg" 
+      <div className="pill-container" style={{ 
+        position: 'relative', 
+        zIndex: 1, 
+        padding: '52px 28px 0', 
+        marginTop: '15vh', 
+        opacity: visible ? 1 : 0, 
+        transform: visible ? 'translateY(0)' : 'translateY(-12px)', 
+        transition: 'opacity 0.6s ease, transform 0.6s ease',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start' 
+      }}>
+        {/* Logo inserted here */}
+        <img 
+          src={logo} 
           alt="Logo" 
           style={{ 
-            width: '60px', 
+            width: '48px', // Adjust size to your preference
             height: 'auto', 
             marginBottom: '16px',
-            marginLeft: '4px' // Slight nudge to align with the pill
+            marginLeft: '4px' 
           }} 
         />
+
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', border: '1px solid rgba(139,124,246,0.25)', borderRadius: 20, background: 'rgba(139,124,246,0.08)' }}>
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', animation: 'pulse 2s infinite' }} />
           <span style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 500, letterSpacing: '0.04em' }}>
