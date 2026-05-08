@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import logo from '../assets/logo-Murmur.svg'
+import logo from '../assets/MurMur.svg'
 
 export default function Welcome() {
   const navigate = useNavigate()
