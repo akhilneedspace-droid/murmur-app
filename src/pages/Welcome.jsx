@@ -36,7 +36,7 @@ export default function Welcome() {
           src={logo} 
           alt="Logo" 
           style={{ 
-            width: '48px', // Adjust size to your preference
+            width: '100px', // Adjust size to your preference
             height: 'auto', 
             marginBottom: '16px',
             marginLeft: '4px' 
