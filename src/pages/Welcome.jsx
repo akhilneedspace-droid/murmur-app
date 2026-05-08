@@ -22,8 +22,8 @@ export default function Welcome() {
       <div className="pill-container" style={{ 
         position: 'relative', 
         zIndex: 1, 
-        padding: '52px 28px 0', 
-        marginTop: '15vh', 
+        padding: '20px 28px 0', 
+        marginTop: '10vh', 
         opacity: visible ? 1 : 0, 
         transform: visible ? 'translateY(0)' : 'translateY(-12px)', 
         transition: 'opacity 0.6s ease, transform 0.6s ease',
@@ -36,7 +36,7 @@ export default function Welcome() {
           src={logo} 
           alt="Logo" 
           style={{ 
-            width: '100px', // Adjust size to your preference
+            width: '140px', // Adjust size to your preference
             height: 'auto', 
             marginBottom: '16px',
             marginLeft: '4px' 
