@@ -1429,11 +1429,11 @@ async function send() {
     try {
 
  // 1. Prepare Context & Identity
-      const contextText = post?.content || session?.content || ""; 
+      const contextText = post?.content || ""; 
       const AI_ID = '00000000-0000-0000-0000-000000000001';
       
       // Determine role by checking if the AI is the expresser of this post/session
-      const aiRole = (post?.expresser_id === AI_ID || session?.expresser_id === AI_ID || isSeedSession) 
+      const aiRole = (post?.expresser_id === AI_ID ||  isSeedSession) 
         ? 'expresser' 
         : 'listener';
 
