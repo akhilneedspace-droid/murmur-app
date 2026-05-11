@@ -732,7 +732,7 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
 
     // To hide it from the feed, ensure your 'posts' filter checks 'existing sessions'
 
-    setActiveSession({ ...existing, post: { ...post, id: cleanId }, is_seed: post.is_seed });
+    setActiveSession({ ...existing, expresser_id: existing.expresser_id, post: { ...post, id: cleanId }, is_seed: post.is_seed });
 
     return;
 
@@ -1253,7 +1253,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
         }))
       // If no existing messages, use post content as the opening message
       const history = existingHistory.length > 0 ? existingHistory : [{ role: 'user', content: postText }]
-      const aiText = await getAIResponse(history, 'listener', postText)
+      const aiText = await getAIResponse(history, aiRole, postText)
       setAiThinking(false)
       if (!aiText) return
       setOtherTyping(true)
@@ -1429,15 +1429,18 @@ async function send() {
     try {
 
  // 1. Prepare Context & Identity
-      const contextText = post?.content || ""; 
+      const contextText = post?.content || activeSession?.posts?.content ||""; 
       const AI_ID = '00000000-0000-0000-0000-000000000001';
       
       // Determine role by checking if the AI is the expresser of this post/session
-      const aiRole = (post?.expresser_id === AI_ID ||  isSeedSession) 
+      const aiRole = (isSeedSession || 
+  post?.is_seed || 
+  activeSession?.expresser_id === AI_ID || 
+  post?.user_id === AI_ID) 
         ? 'expresser' 
         : 'listener';
 
-      console.log("AI Identity Check:", { aiRole, hasContext: !!contextText });
+      console.log("AI Identity Check:", { aiRole,expresser: activeSession?.expresser_id, hasContext: !!contextText });
 
       // 2. Get Response (ONLY ONE CALL HERE)
       const aiText = await getAIResponse(history, aiRole, contextText);
