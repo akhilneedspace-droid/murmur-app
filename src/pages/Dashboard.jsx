@@ -582,11 +582,11 @@ function ExpresserView({ user, myProfile, onBack, onBrowseListeners, onSessionSt
             )}
           </div>
 
-          {/* Browse while waiting */}
+          {/* Browse while waiting 
          <button onClick={onBrowseListeners} style={{ padding: '13px 20px', borderRadius: 'var(--radius)', background: 'transparent', border: '1px solid var(--border)', color: 'rgba(240,239,232,0.6)', fontSize: 14, cursor: 'pointer', textAlign: 'center', transition: 'border-color var(--transition)' }}
             onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(51, 137, 199, 0.5)'} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
             Browse listener stories while you wait
-          </button> 
+          </button> */}
         </div>
       </div>
     )
