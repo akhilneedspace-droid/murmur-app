@@ -766,7 +766,7 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
 
     if (newSession) {
 
-      setActiveSession({ ...newSession, post: { ...post, id: cleanId }, is_seed: true });
+      setActiveSession({ ...newSession, expresser_id: '00000000-0000-0000-0000-000000000001',post: { ...post, id: cleanId }, is_seed: true });
 
     } else {
 
@@ -1429,7 +1429,7 @@ async function send() {
     try {
 
  // 1. Prepare Context & Identity
-      const contextText = post?.content || activeSession?.posts?.content ||""; 
+      const contextText = post?.content || activeSession?.post?.content ||""; 
       const AI_ID = '00000000-0000-0000-0000-000000000001';
       
       // Determine role by checking if the AI is the expresser of this post/session
