@@ -1357,8 +1357,6 @@ async function send() {
 
   // Use the ID variable you already have
   let activeSessionId = activeSession; 
-  console.log("Starting send. Current sessionId state:", activeSessionId);
-
   const AI_ID = '00000000-0000-0000-0000-000000000001';
 
   // 1. ENSURE SESSION EXISTS
@@ -1376,7 +1374,7 @@ async function send() {
       activeSessionId = existing.id;
       setSessionId(activeSessionId);
     } else {
-      const { data: newS, error: sErr } = await supabase
+      const { data: newS } = await supabase
         .from('sessions')
         .insert({ 
           post_id: cleanPostId, 
@@ -1412,21 +1410,19 @@ async function send() {
   if (reallyIsAIChat) {
     setAiThinking(true);
     
+    // FIX: Correctly identify roles for the AI history
     const history = [...messages, myMsg].map(m => ({
       role: (m.sender_id === AI_ID || m.is_ai_msg) ? 'assistant' : 'user',
       content: m.content
     }));
     
     try {
-      // Identity Check: Removing the broken 'activeSession.expresser_id' call
       const contextText = post?.content || ""; 
       
-      // We check post.user_id directly to see if Priya (AI) is the expresser
+      // FIX: Determine role without using 'activeSession' as an object
       const aiRole = (isSeedSession || post?.is_seed || post?.user_id === AI_ID) 
         ? 'expresser' 
         : 'listener';
-
-      console.log("AI Identity Check:", { aiRole, hasContext: !!contextText });
 
       const aiText = await getAIResponse(history, aiRole, contextText);
       setAiThinking(false);
@@ -1445,7 +1441,10 @@ async function send() {
           })
           .select().single();
 
-        if (aiInserted) setMessages(prev => [...prev, aiInserted]);
+        if (aiInserted) {
+          // This ensures the AI's reply is added to the messages array in state
+          setMessages(prev => [...prev, aiInserted]);
+        }
       }
     } catch (err) {
       console.error("Error in AI chain:", err);
