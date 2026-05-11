@@ -1253,7 +1253,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
         }))
       // If no existing messages, use post content as the opening message
       const history = existingHistory.length > 0 ? existingHistory : [{ role: 'user', content: postText }]
-      const aiText = await getAIResponse(history, aiRole, postText)
+      const aiText = await getAIResponse(history, 'listener', postText)
       setAiThinking(false)
       if (!aiText) return
       setOtherTyping(true)
