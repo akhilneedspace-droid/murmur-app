@@ -1332,7 +1332,7 @@ function ChatView({ sessionId: initialSessionId, isExpresser, isSeedSession, isA
         if (payload.user_id !== currentUserId) {
           setOtherTyping(true)
           clearTimeout(pendingTimer.current)
-          pendingTimer.current = setTimeout(() => setOtherTyping(false), 3000)
+          pendingTimer.current = setTimeout(() => setOtherTyping(false), 3000) //timer
         }
       })
       .subscribe()
