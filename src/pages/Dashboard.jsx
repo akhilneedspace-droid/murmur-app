@@ -664,28 +664,28 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
  async function fetchPosts() {
   setLoading(true);
 
-  // 1. Fetch the posts
+  // 1. Fetch the posts - ADDED .order() here
   const { data: allPosts } = await supabase
     .from('posts')
     .select('*, profiles(full_name, avatar_url)')
     .eq('status', 'open')
-    .neq('user_id', user.id);
+    .neq('user_id', user.id)
+    .order('created_at', { ascending: false }); // Ensures DB results are fresh
 
-  // 2. Fetch YOUR existing sessions (to know who you've talked to)
+  // 2. Fetch YOUR existing sessions
   const { data: mySessions } = await supabase
     .from('sessions')
     .select('post_id')
     .eq('listener_id', user.id);
 
-  // Create a list of IDs for posts you've already interacted with
   const interactedPostIds = new Set(mySessions?.map(s => s.post_id.toString()) || []);
 
-  // 3. Filter SEED_POSTS: Keep only those you haven't talked to
+  // 3. Filter SEED_POSTS
   const filteredSeeds = SEED_POSTS.filter(seed => 
     !interactedPostIds.has(seed.id.toString().replace('seed-', ''))
   );
 
-  // 4. Filter DB Posts: Keep only those not in seeds AND not interacted with
+  // 4. Filter DB Posts
   const filteredDbPosts = (allPosts || []).filter(dbPost => {
     const cleanId = dbPost.id.toString();
     const isSeed = SEED_POSTS.some(s => s.id === cleanId);
@@ -693,8 +693,12 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
     return !isSeed && !alreadyInteracted;
   });
 
-  // 5. Combine and show
-  setPosts([...filteredSeeds, ...filteredDbPosts]);
+  // 5. Combine and SORT - Fixes the Cathy order issue
+  const combined = [...filteredSeeds, ...filteredDbPosts].sort((a, b) => 
+    new Date(b.created_at) - new Date(a.created_at)
+  );
+
+  setPosts(combined);
   setLoading(false);
 }
 
@@ -881,6 +885,13 @@ function PostCard({ post, delay, onClick }) {
   const avatarUrl = seed
     ? (seed.is_anonymous ? null : seed.profiles?.avatar_url)
     : (post.is_anonymous ? null : post.profiles?.avatar_url);
+
+    // ADD THIS HELPER: Truncates text to show "..."
+  const renderContent = (text) => {
+    const limit = 140; // You can adjust this number
+    if (text.length <= limit) return text;
+    return text.substring(0, limit).trim() + "...";
+  };
 
   const timeAgo = d => { const m = Math.floor((Date.now() - new Date(d)) / 60000); if (m < 1) return 'just now'; if (m < 60) return `${m} min ago`; return `${Math.floor(m / 60)}h ago` }
   return (
