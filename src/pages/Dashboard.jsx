@@ -56,14 +56,14 @@ function ListenerStars({ count }) {
 }
 
 const SEED_POSTS = [
-  { id: '00000000-0000-0000-0000-000000000010', content: "I've been really hard on myself lately. Like nothing I do is ever enough, no matter how hard I try.", emotion_tag: 'overwhelmed', is_anonymous: false, created_at: "2026-05-10T12:00:00Z", profiles: { full_name: 'Priya', avatar_url: null }, is_seed: true },
-  { id: '00000000-0000-0000-0000-000000000002', content: "Had a panic attack at work today and had to pretend everything was fine. I'm exhausted from holding it together.", emotion_tag: 'anxious', is_anonymous: true, created_at: new Date(Date.now() - 9 * 60000).toISOString(), profiles: null, is_seed: true },
-  { id: '00000000-0000-0000-0000-000000000003', content: "My relationship ended two weeks ago and I still reach for my phone to text them. I don't know how to stop.", emotion_tag: 'sad', is_anonymous: false, created_at: new Date(Date.now() - 14 * 60000).toISOString(), profiles: { full_name: 'Jordan', avatar_url: null }, is_seed: true },
-  { id: '00000000-0000-0000-0000-000000000004', content: "I got the promotion I worked two years for and I feel... nothing. I thought I'd be happy. Is that normal?", emotion_tag: 'confused', is_anonymous: false, created_at: new Date(Date.now() - 22 * 60000).toISOString(), profiles: { full_name: 'Sam', avatar_url: null }, is_seed: true },
-  { id: '00000000-0000-0000-0000-000000000005', content: "I've been cancelling plans with friends because I just don't have the energy. I miss who I used to be.", emotion_tag: 'numb', is_anonymous: false, created_at: new Date(Date.now() - 35 * 60000).toISOString(), profiles: { full_name: 'Marcus', avatar_url: null }, is_seed: true },
-  { id: '00000000-0000-0000-0000-000000000006', content: "I snapped at someone I love today and I can't stop thinking about it. I hate when I'm like this.", emotion_tag: 'guilty', is_anonymous: false, created_at: new Date(Date.now() - 48 * 60000).toISOString(), profiles: { full_name: 'Aisha', avatar_url: null }, is_seed: true },
-  { id: '00000000-0000-0000-0000-000000000007', content: "Just got back from my first solo trip and I feel so proud of myself. Six months ago I couldn't have done that.", emotion_tag: 'grateful', is_anonymous: false, created_at: new Date(Date.now() - 55 * 60000).toISOString(), profiles: { full_name: 'Lena', avatar_url: null }, is_seed: true },
-  { id: '00000000-0000-0000-0000-000000000008', content: "I finally told my best friend how much they mean to me after years of being too scared. Feels amazing.", emotion_tag: 'happy', is_anonymous: false, created_at: new Date(Date.now() - 70 * 60000).toISOString(), profiles: { full_name: 'Carlos', avatar_url: null }, is_seed: true },
+  { id: '00000000-0000-0000-0000-000000000010', content: "I've been really hard on myself lately. Like nothing I do is ever enough, no matter how hard I try.", emotion_tag: 'overwhelmed', is_anonymous: false, created_at: "2026-05-12T10:00:00Z", profiles: { full_name: 'Priya', avatar_url: null }, is_seed: true },
+  { id: '00000000-0000-0000-0000-000000000002', content: "Had a panic attack at work today and had to pretend everything was fine. I'm exhausted from holding it together.", emotion_tag: 'anxious', is_anonymous: true, created_at: "2026-05-12T11:40:00Z", profiles: null, is_seed: true },
+  { id: '00000000-0000-0000-0000-000000000003', content: "My relationship ended two weeks ago and I still reach for my phone to text them. I don't know how to stop.", emotion_tag: 'sad', is_anonymous: false, created_at: "2026-05-12T09:52:00Z", profiles: { full_name: 'Jordan', avatar_url: null }, is_seed: true },
+  { id: '00000000-0000-0000-0000-000000000004', content: "I got the promotion I worked two years for and I feel... nothing. I thought I'd be happy. Is that normal?", emotion_tag: 'confused', is_anonymous: false, created_at: "2026-05-12T08:25:00Z", profiles: { full_name: 'Sam', avatar_url: null }, is_seed: true },
+  { id: '00000000-0000-0000-0000-000000000005', content: "I've been cancelling plans with friends because I just don't have the energy. I miss who I used to be.", emotion_tag: 'numb', is_anonymous: false, created_at: "2026-05-12T10:50:00Z", profiles: { full_name: 'Marcus', avatar_url: null }, is_seed: true },
+  { id: '00000000-0000-0000-0000-000000000006', content: "I snapped at someone I love today and I can't stop thinking about it. I hate when I'm like this.", emotion_tag: 'guilty', is_anonymous: false, created_at: "2026-05-12T10:30:00Z", profiles: { full_name: 'Aisha', avatar_url: null }, is_seed: true },
+  { id: '00000000-0000-0000-0000-000000000007', content: "Just got back from my first solo trip and I feel so proud of myself. Six months ago I couldn't have done that.", emotion_tag: 'grateful', is_anonymous: false, created_at: "2026-05-13T10:50:00Z", profiles: { full_name: 'Lena', avatar_url: null }, is_seed: true },
+  { id: '00000000-0000-0000-0000-000000000008', content: "I finally told my best friend how much they mean to me after years of being too scared. Feels amazing.", emotion_tag: 'happy', is_anonymous: false, created_at: "2026-05-13T11:50:00Z", profiles: { full_name: 'Carlos', avatar_url: null }, is_seed: true },
 ]
 
 const seedChatStore = {}
@@ -888,7 +888,7 @@ function PostCard({ post, delay, onClick }) {
 
     // ADD THIS HELPER: Truncates text to show "..."
   const renderContent = (text) => {
-    const limit = 140; // You can adjust this number
+    const limit = 200; // You can adjust this number
     if (text.length <= limit) return text;
     return text.substring(0, limit).trim() + "...";
   };
