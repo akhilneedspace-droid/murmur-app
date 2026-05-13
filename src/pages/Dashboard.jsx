@@ -904,7 +904,10 @@ function PostCard({ post, delay, onClick }) {
         </div>
         <span style={{ fontSize: 11, color: 'rgba(240,239,232,0.4)' }}>{timeAgo(post.created_at)}</span>
       </div>
-      <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.7)', lineHeight: 1.65, marginBottom: 12 }}>"{post.content}"</p>
+      {/* UPDATED LINE: Added renderContent here */}
+      <p style={{ fontSize: 14, color: 'rgba(240,239,232,0.7)', lineHeight: 1.65, marginBottom: 12 }}>
+        "{renderContent(post.content)}"
+      </p>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         {post.emotion_tag && <span style={{ fontSize: 11, padding: '4px 10px', borderRadius: 10, background: 'var(--bg3)', color: 'var(--teal)', border: '1px solid rgba(93,202,165,0.2)' }}>{post.emotion_tag}</span>}
         <span style={{ fontSize: 12, marginLeft: 'auto', color: hovered ? 'var(--teal)' : 'rgba(240,239,232,0.4)', transition: 'color var(--transition)' }}>{hovered ? 'Start listening →' : 'Tap to listen'}</span>
