@@ -664,23 +664,26 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
  async function fetchPosts() {
   setLoading(true);
 
-  // 1. Fetch the posts - ADDED .order() here
   const { data: allPosts } = await supabase
     .from('posts')
     .select('*, profiles(full_name, avatar_url)')
     .eq('status', 'open')
     .neq('user_id', user.id)
-    .order('created_at', { ascending: false }); // Ensures DB results are fresh
+    .order('created_at', { ascending: false });
 
-  // 2. Fetch YOUR existing sessions
+  // 1. UPDATED: Fetch sessions AND check if they have messages
   const { data: mySessions } = await supabase
     .from('sessions')
-    .select('post_id')
+    .select(`
+      post_id,
+      messages!inner(id) 
+    `) // This '!inner' trick only returns sessions that have messages
     .eq('listener_id', user.id);
 
+  // 2. These are the IDs of posts you have REALLY started a conversation with
   const interactedPostIds = new Set(mySessions?.map(s => s.post_id.toString()) || []);
 
-  // 3. Filter SEED_POSTS
+  // 3. Filter SEED_POSTS: Now they only disappear if you actually messaged them
   const filteredSeeds = SEED_POSTS.filter(seed => 
     !interactedPostIds.has(seed.id.toString().replace('seed-', ''))
   );
@@ -693,7 +696,6 @@ function ListenerView({ user, myProfile, todayListenerCount, onBack, onComplete 
     return !isSeed && !alreadyInteracted;
   });
 
-  // 5. Combine and SORT - Fixes the Cathy order issue
   const combined = [...filteredSeeds, ...filteredDbPosts].sort((a, b) => 
     new Date(b.created_at) - new Date(a.created_at)
   );
