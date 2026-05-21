@@ -10,7 +10,7 @@ function getGreeting() {
   const h = new Date().getHours()
   if (h >= 23 || h < 4)  return 'Still Awake, All okay?'
   if (h >= 4  && h < 12) return 'Good Morning'
-  if (h >= 12 && h < 16) return 'Good Aftrnoon'
+  if (h >= 12 && h < 16) return 'Good Afternoon'
   if (h >= 16 && h < 18) return 'Good Evening'
   if (h >= 18 && h < 20) return 'Hope your evening is going great!'
   return "Don't forget to sleep on time. Good Night! "
